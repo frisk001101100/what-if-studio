@@ -98,6 +98,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-5.5",
         max_output_tokens: 5500,
+        store: false,
         text: { format: { type: "json_object" } },
         input: [
           { role: "system", content: system + " Gere JSON que corresponda exatamente aos campos solicitados." },
