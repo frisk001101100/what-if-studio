@@ -16,17 +16,18 @@
     const total = Math.floor(Math.max(0, Number(seconds) || 0));
     return String(Math.floor(total / 60)).padStart(2, "0") + ':' + String(total % 60).padStart(2, "0");
   };
-  const defaultState = () => ({ projects: [], activeProjectId: null });
+  const defaultState = () => ({ projects: [], activeProjectId: null, course: { title: "Curso What If", description: "Aprenda a transformar ideias em roteiros curtos, vídeos envolventes e histórias que crescem com a participação do público.", price: "", paymentNote: "Fale comigo pelo WhatsApp para receber detalhes e formas de pagamento." } });
   let state = loadState();
-  let activeView = "dashboard";
+  state.course = { ...defaultState().course, ...(state.course || {}) };
+  state.publishQueue = Array.isArray(state.publishQueue) ? state.publishQueue : [];
+  let activeView = new URLSearchParams(window.location.search).get("view") === "course" ? "course" : "dashboard";
   let activeTab = "overview";
   let activeEpisodeId = null;
   let activeSceneId = null;
   let aiSessionCredentials = null;
+  let voiceSessionCredentials = null;
   let pendingAiGeneration = null;
-  let supabaseClient = null;
-  let signedInUser = null;
-  let cloudSyncTimer = null;
+  let videoRenderState = null;
   let toastTimer = null;
 
   function loadState() {
@@ -38,19 +39,7 @@
   }
 
   function getSettings() {
-    const defaults = {
-      supabaseUrl: "https://auppgrsgikvsjtpiuvkq.supabase.co",
-      supabaseAnon: "sb_publishable_na6azEXNYbMR7sq92sQ0jg_2ekWyNHb"
-    };
-    try {
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      const configured = saved && typeof saved === "object" ? saved : {};
-      return {
-        ...configured,
-        supabaseUrl: configured.supabaseUrl || defaults.supabaseUrl,
-        supabaseAnon: configured.supabaseAnon || defaults.supabaseAnon
-      };
-    } catch (_) { return defaults; }
+    try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (_) { return {}; }
   }
 
   function saveSettings(settings) {
@@ -66,7 +55,6 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     const label = $("#save-status");
     if (label) label.textContent = "Salvo neste dispositivo";
-    if (allowCloud !== false && signedInUser && supabaseClient) scheduleCloudSync();
   }
 
   function notify(message, kind) {
@@ -82,6 +70,11 @@
   }
 
   function closeModal() {
+    if (videoRenderState) {
+      videoRenderState.cancelled = true;
+      if (videoRenderState.abortController) videoRenderState.abortController.abort();
+      if (videoRenderState.recorder && videoRenderState.recorder.state !== "inactive") videoRenderState.recorder.stop();
+    }
     $("#modal-root").innerHTML = "";
   }
 
@@ -160,16 +153,61 @@
     const project = currentProject();
     const navView = activeView === "editor" ? "projects" : activeView;
     $$("[data-nav]").forEach((item) => item.classList.toggle("active", item.dataset.nav === navView));
-    const title = activeView === "editor" && project ? project.title : activeView === "projects" ? "Projetos" : activeView === "settings" ? "Configurações" : "Visão geral";
+    const title = activeView === "editor" && project ? project.title : activeView === "projects" ? "Projetos" : activeView === "settings" ? "Configurações" : activeView === "publishing" ? "Publicação" : activeView === "course" ? "Curso" : "Visão geral";
     $("#page-title").textContent = title;
-    $("#save-status").textContent = signedInUser ? "Sincronização ativada" : "Salvo neste dispositivo";
+    $("#save-status").textContent = "Workspace local · Kai";
     const aiButton = $('[data-action="configure-ai"]');
     if (aiButton) aiButton.textContent = aiSessionCredentials ? "IA: " + aiProviderLabel(aiSessionCredentials.provider) : "Configurar IA";
     const root = $("#app");
     if (activeView === "editor" && project) root.innerHTML = renderEditor(project);
     else if (activeView === "projects") root.innerHTML = renderProjects();
     else if (activeView === "settings") root.innerHTML = renderSettings();
+    else if (activeView === "publishing") root.innerHTML = renderPublishing();
+    else if (activeView === "course") root.innerHTML = renderCourse();
     else root.innerHTML = renderDashboard();
+    if (activeView === "editor" && activeTab === "episodes" && activeEpisodeId) {
+      const tools = $(".video-editor-topline", root);
+      if (tools) {
+        const renderButton = document.createElement("button");
+        renderButton.type = "button";
+        renderButton.className = "button button-primary button-small";
+        renderButton.dataset.action = "render-video";
+        renderButton.textContent = "▣ Renderizar vídeo";
+        tools.appendChild(renderButton);
+      }
+    }
+  }
+
+  function renderCourse() {
+    const course = state.course;
+    const price = course.price ? '<span class="course-price">' + escapeHtml(course.price) + '</span>' : '<span class="course-price">Consulte as condições pelo WhatsApp</span>';
+    const message = encodeURIComponent("Olá! Quero saber mais sobre o curso: " + (course.title || "Curso What If"));
+    if (new URLSearchParams(window.location.search).get("view") === "course") return '<div class="page-stack public-course-page"><section class="hero-panel course-hero"><div class="hero-copy"><span class="eyebrow">APRENDA A CRIAR</span><h1>' + escapeHtml(course.title) + '</h1><p>' + escapeHtml(course.description) + '</p>' + price + '<a class="button button-primary" href="https://wa.me/5582993485560?text=' + message + '" target="_blank" rel="noopener noreferrer">Quero saber do Curso What If pelo WhatsApp <span>→</span></a><small class="course-contact-note">' + escapeHtml(course.paymentNote) + ' O Pix é combinado e confirmado diretamente no WhatsApp.</small></div><div class="course-art" aria-hidden="true"><span>IDEIA</span><i>→</i><b>ROTEIRO</b><i>→</i><strong>HISTÓRIA</strong></div></section></div>';
+    return '<div class="page-stack"><section class="hero-panel course-hero"><div class="hero-copy"><span class="eyebrow">APRENDA A CRIAR</span><h1>' + escapeHtml(course.title) + '</h1><p>' + escapeHtml(course.description) + '</p>' + price + '<a class="button button-primary" href="https://wa.me/5582993485560?text=' + message + '" target="_blank" rel="noopener noreferrer">Conversar no WhatsApp <span>→</span></a><small class="course-contact-note">' + escapeHtml(course.paymentNote) + '</small></div><div class="course-art" aria-hidden="true"><span>IDEIA</span><i>→</i><b>ROTEIRO</b><i>→</i><strong>HISTÓRIA</strong></div></section>' +
+      '<section class="panel course-edit-panel"><div class="panel-heading"><div><span class="eyebrow">SUA OFERTA</span><h2>Prévia editável neste navegador</h2></div><span class="status-pill">Salvo neste dispositivo</span></div><p class="muted">Edite o texto e o preço para conferir a apresentação. Estas alterações ainda não são compartilhadas com outros visitantes.</p><button class="button button-secondary button-small" data-action="copy-course-link">Copiar link público</button><div class="form-grid"><label class="field full"><span>Nome do curso</span><input data-course-field="title" maxlength="100" value="' + escapeHtml(course.title) + '"></label><label class="field full"><span>Descrição</span><textarea data-course-field="description" maxlength="600">' + escapeHtml(course.description) + '</textarea></label><label class="field"><span>Preço (opcional)</span><input data-course-field="price" maxlength="60" value="' + escapeHtml(course.price) + '" placeholder="Ex.: R$ 197 ou consulte no WhatsApp"></label><label class="field"><span>Informação de pagamento</span><input data-course-field="paymentNote" maxlength="160" value="' + escapeHtml(course.paymentNote) + '"></label></div><p class="small muted" data-course-payment-note>' + escapeHtml(course.paymentNote) + '</p><p class="small muted">Esta versão inicia o atendimento no WhatsApp; ela não processa nem confirma pagamentos automaticamente. O pagamento Pix é combinado e confirmado manualmente por você.</p></section></div>';
+  }
+
+  function renderPublishing() {
+    const projects = state.projects;
+    if (!projects.length) return '<div class="page-stack"><div class="empty-state"><div class="empty-illustration">▶</div><h2>Prepare sua primeira publicação</h2><p>Crie um projeto e um episódio para organizar roteiro, legenda e votação.</p><button class="button button-primary" data-action="new-project">Criar projeto</button></div><section class="panel integration-note"><span class="eyebrow">INSTAGRAM</span><h3>Conta ainda não conectada</h3><p>O planejamento e a votação manual já podem ser usados. Para publicar e importar comentários automaticamente, esta conta precisa ser conectada pelo fluxo oficial da Meta.</p></section></div>';
+    const chosenProject = projects.find((item) => item.id === state.publishProjectId) || projects[0];
+    const chosenEpisode = chosenProject.episodes.find((item) => item.id === state.publishEpisodeId) || chosenProject.episodes[0];
+    if (!chosenEpisode) return '<div class="empty-state"><h2>Este projeto ainda não tem episódios</h2><button class="button button-primary" data-action="open-project" data-id="' + escapeHtml(chosenProject.id) + '">Abrir projeto</button></div>';
+    const script = chosenEpisode.script || "Gere ou escreva o roteiro na área de vídeos do projeto.";
+    const caption = chosenEpisode.caption || "Adicione uma legenda antes de publicar.";
+    const sceneList = (chosenEpisode.scenes || []).map((scene, index) => '<li><b>Cena ' + (index + 1) + ' · ' + escapeHtml(scene.title || "Sem título") + '</b><span>' + escapeHtml(scene.visual || scene.videoPrompt || "Descreva o plano") + '</span></li>').join("");
+    const queue = state.publishQueue.slice().sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    const queueRows = queue.map((item) => {
+      const queuedProject = projects.find((project) => project.id === item.projectId);
+      const queuedEpisode = queuedProject && queuedProject.episodes.find((episode) => episode.id === item.episodeId);
+      if (!queuedEpisode) return "";
+      return '<article class="queue-row"><span class="queue-date">' + escapeHtml(new Date(item.scheduledAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })) + '</span><b>' + escapeHtml(queuedProject.title + " · " + queuedEpisode.title) + '</b><span class="status-pill">Planejado</span><button class="text-button" data-action="remove-from-queue" data-id="' + escapeHtml(item.id) + '">Remover</button></article>';
+    }).join("");
+    return '<div class="page-stack"><div class="section-heading"><div><span class="eyebrow">DO ROTEIRO AO POST</span><h1>Preparar publicação</h1><p class="muted">Revise o vídeo e a legenda. Nada é publicado sem a integração oficial e sua autorização.</p></div><span class="status-pill">Rascunho</span></div>' +
+      '<section class="panel publishing-selectors"><label class="field"><span>Projeto</span><select data-publish-select="project">' + projects.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === chosenProject.id ? "selected" : "") + '>' + escapeHtml(item.title) + '</option>').join("") + '</select></label><label class="field"><span>Episódio</span><select data-publish-select="episode">' + chosenProject.episodes.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === chosenEpisode.id ? "selected" : "") + '>Parte ' + item.number + ' · ' + escapeHtml(item.title) + '</option>').join("") + '</select></label><button class="button button-secondary" data-action="edit-publish-episode">Editar roteiro →</button></section>' +
+      '<div class="publishing-grid"><section class="panel"><span class="eyebrow">ROTEIRO</span><h2>' + escapeHtml(chosenEpisode.title) + '</h2><p class="publish-script">' + escapeHtml(script) + '</p>' + (sceneList ? '<ol class="publish-scene-list">' + sceneList + '</ol>' : '<p class="small muted">Adicione cenas e prompts para orientar a gravação ou edição do vídeo.</p>') + '<button class="button button-secondary" data-action="copy-publish" data-field="script">Copiar roteiro</button></section><section class="panel"><span class="eyebrow">LEGENDA E VOTAÇÃO</span><h2>Texto para o post</h2><p class="publish-script">' + escapeHtml(caption) + '</p><div class="callout-note">A votação por comentários será contabilizada na aba Enquetes do projeto. Você pode colar os comentários recebidos; o texto original não fica salvo.</div><button class="button button-secondary" data-action="copy-publish" data-field="caption">Copiar legenda</button><button class="button button-ghost" data-action="open-publish-poll">Configurar votação →</button></section></div>' +
+      '<section class="panel schedule-panel"><div class="panel-heading"><div><span class="eyebrow">PLANEJAMENTO</span><h2>Meta: até 4 vídeos por dia</h2></div><span class="status-pill">Fila deste navegador</span></div><div class="schedule-add-row"><label class="field"><span>Data e hora</span><input type="datetime-local" data-publish-time></label><button class="button button-primary" data-action="add-to-queue">Adicionar à fila</button></div><div class="queue-list">' + (queueRows || '<p class="small muted">Nenhum vídeo planejado. Defina a data e a hora acima.</p>') + '</div><p class="small muted">A fila organiza datas e bloqueia mais de quatro itens por dia, mas ainda não publica automaticamente. A publicação programada exige a integração e a autorização Meta.</p></section>' +
+      '<section class="panel integration-note"><div><span class="eyebrow">PUBLICAÇÃO NO INSTAGRAM</span><h2>Prepare o arquivo e revise antes de postar</h2><p>O estúdio renderiza um vídeo vertical WebM com gráficos animados, voz narrada e legendas. Ainda não publica automaticamente nem importa comentários ou métricas. A publicação oficial exige conta Profissional (Criador ou Empresa), app Meta e permissões aprovadas; até lá, baixe o vídeo e publique pelo Instagram.</p></div><a class="button button-secondary" href="https://developers.facebook.com/docs/instagram-platform/content-publishing/" target="_blank" rel="noopener noreferrer">Ver requisitos da Meta</a></section></div>';
   }
 
   function renderDashboard() {
@@ -178,7 +216,7 @@
     const recent = state.projects.slice(0, 3);
     return '<div class="page-stack">' +
       '<section class="hero-panel creator-hero"><div class="hero-copy"><span class="eyebrow">SHORT-FORM STORY STUDIO</span><h1>Da primeira ideia ao <span>próximo vídeo.</span></h1><p>Planeje histórias verticais, organize cada cena e transforme a escolha da audiência no gancho do episódio seguinte.</p><button class="button button-primary" data-action="new-project"><span class="button-icon">＋</span> Criar série <span>→</span></button><div class="hero-proof"><span>9:16 vertical</span><span>Roteiro + storyboard</span><span>Enquetes com consequência</span></div></div><div class="hero-art creator-hero-art" aria-hidden="true"><div class="hero-phone"><div class="phone-top"><i></i><span>STORY / 01</span><i></i></div><div class="phone-content"><span class="phone-kicker">E SE...</span><strong>UMA ESCOLHA<br>MUDA TUDO?</strong><span class="phone-caption">parte 01 · assista até o fim</span></div><div class="phone-bottom"><span>●</span><span>◉</span><span>↗</span></div></div><div class="hero-orbit"></div><span class="hero-float hero-float-one">9:16</span><span class="hero-float hero-float-two">● REC</span></div></section>' +
-      '<section class="stats-grid"><article class="stat-card"><span class="stat-icon purple">▧</span><div><strong>' + state.projects.length + '</strong><span>Séries</span></div></article><article class="stat-card"><span class="stat-icon blue">▶</span><div><strong>' + totalEpisodes + '</strong><span>Vídeos planejados</span></div></article><article class="stat-card"><span class="stat-icon amber">◉</span><div><strong>' + totalPolls + '</strong><span>Enquetes</span></div></article><article class="stat-card"><span class="stat-icon green">↗</span><div><strong>' + (signedInUser ? "ON" : "LOCAL") + '</strong><span>Cloud sync</span></div></article></section>' +
+      '<section class="stats-grid"><article class="stat-card"><span class="stat-icon purple">▧</span><div><strong>' + state.projects.length + '</strong><span>Séries</span></div></article><article class="stat-card"><span class="stat-icon blue">▶</span><div><strong>' + totalEpisodes + '</strong><span>Episódios</span></div></article><article class="stat-card"><span class="stat-icon amber">◉</span><div><strong>' + totalPolls + '</strong><span>Enquetes</span></div></article><article class="stat-card"><span class="stat-icon green">✓</span><div><strong>LOCAL</strong><span>Salvo no aparelho</span></div></article></section>' +
       '<section class="section-block"><div class="section-heading"><div><span class="eyebrow">LINGUAGENS DE VÍDEO</span><h2>Escolha um formato para experimentar</h2><p class="muted">Referências de linguagem comuns em vídeos curtos — adapte ao seu universo, sem copiar a identidade de outras contas.</p></div></div><div class="format-inspiration-grid">' +
       '<article class="format-inspiration-card"><div class="format-cover format-cover-pov"><span class="format-index">01 / POV</span><strong>Você percebe<br>algo estranho.</strong><i>GANCHO VISUAL</i></div><div class="format-card-copy"><h3>POV cinematográfico</h3><p>Comece com uma imagem intrigante, narração curta e uma revelação no fim.</p><span class="format-meta">Close-ups · som ambiente · cliffhanger</span></div></article>' +
       '<article class="format-inspiration-card"><div class="format-cover format-cover-series"><span class="format-index">02 / SÉRIE</span><strong>Parte 01:<br>a escolha.</strong><i>CONTINUA...</i></div><div class="format-card-copy"><h3>História em partes</h3><p>Contexto rápido, conflito claro e uma pergunta que realmente muda a próxima parte.</p><span class="format-meta">Capítulos · comentário · votação</span></div></article>' +
@@ -277,13 +315,307 @@
     }).join("") + '</div>' : '<div class="empty-inline"><p>Nenhuma cena detalhada ainda.</p><button class="button button-secondary button-small" data-action="add-scene">Adicionar primeira cena</button></div>';
 
     return '<div class="page-stack video-editor-page"><div class="video-editor-topline"><button class="text-button" data-action="back-episodes">← Todos os vídeos</button><span class="project-tag">EPISÓDIO ' + String(episode.number).padStart(2, "0") + '</span><span class="status-pill">' + escapeHtml(episode.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-episode">✦ Gerar roteiro com IA</button></div>' +
-      '<div class="video-editor-heading"><div><span class="eyebrow">EDITOR DE VÍDEO VERTICAL</span><h2>' + escapeHtml(episode.title) + '</h2><p>' + escapeHtml(episode.summary || "Defina a premissa visual e narrativa deste vídeo.") + '</p></div><div class="video-editor-specs"><span>9:16</span><span>' + scenes.length + ' cenas</span><span>' + totalSeconds + 's estimados</span></div></div>' +
-      '<div class="video-editor-layout"><div class="video-editor-main"><section class="panel video-preview-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR DE PRÉVIA</span><h2>Composição vertical</h2></div><div class="preview-mode-chip"><i></i> STORYBOARD</div></div><div class="video-preview-stage"><div class="reel-preview"><div class="reel-preview-top"><span>WHAT IF STUDIO</span><span>9:16 · PREVIEW</span></div><div class="reel-preview-center"><span class="reel-preview-kicker">PARTE ' + String(episode.number).padStart(2, "0") + '</span><h3 data-preview-headline>' + escapeHtml(previewHeadline) + '</h3><p data-preview-visual>' + escapeHtml(previewVisual) + '</p><span class="reel-play-mark">▶</span></div><div class="reel-preview-bottom"><div class="reel-mini-avatar">W</div><div><b>@whatifstudio</b><small data-preview-title>' + escapeHtml(episode.title) + '</small></div><span class="reel-preview-heart">♥</span></div><div class="reel-progress"><i></i><i></i><i></i><i></i></div></div><div class="preview-inspector"><span class="eyebrow" data-preview-audio-label>ÁUDIO / CENA ' + String((scenes.findIndex((scene) => scene.id === activeScene.id) + 1) || 1).padStart(2, "0") + '</span><p data-preview-audio>' + escapeHtml(previewAudio) + '</p><div class="preview-inspector-foot"><span>Prévia conceitual</span><span>Não é render de vídeo</span></div></div></div><p class="preview-disclaimer">A tela acima é uma referência de composição do storyboard. O arquivo de vídeo final deve ser montado em um editor de vídeo usando os prompts, cenas e áudios planejados.</p></section>' +
+      '<div class="video-editor-heading"><div><span class="eyebrow">ESTÚDIO DE VÍDEO VERTICAL</span><h2>' + escapeHtml(episode.title) + '</h2><p>' + escapeHtml(episode.summary || "Defina a premissa visual e narrativa deste vídeo.") + '</p></div><div class="video-editor-specs"><span>9:16</span><span>' + scenes.length + ' cenas</span><span>' + totalSeconds + 's estimados</span></div></div>' +
+      '<div class="video-editor-layout"><div class="video-editor-main"><section class="panel video-preview-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR DE PRÉVIA</span><h2>Storyboard animado</h2></div><div class="preview-mode-chip"><i></i> PRÉVIA</div></div><div class="video-preview-stage"><div class="reel-preview"><div class="reel-preview-top"><span>WHAT IF STUDIO</span><span>9:16 · PRÉVIA</span></div><div class="reel-preview-center"><span class="reel-preview-kicker">PARTE ' + String(episode.number).padStart(2, "0") + '</span><h3 data-preview-headline>' + escapeHtml(previewHeadline) + '</h3><p data-preview-visual>' + escapeHtml(previewVisual) + '</p><span class="reel-play-mark">▶</span></div><div class="reel-preview-bottom"><div class="reel-mini-avatar">W</div><div><b>WHAT IF</b><small data-preview-title>' + escapeHtml(episode.title) + '</small></div><span class="reel-preview-heart">♥</span></div><div class="reel-progress"><i></i><i></i><i></i><i></i></div></div><div class="preview-inspector"><span class="eyebrow" data-preview-audio-label>ÁUDIO / CENA ' + String((scenes.findIndex((scene) => scene.id === activeScene.id) + 1) || 1).padStart(2, "0") + '</span><p data-preview-audio>' + escapeHtml(previewAudio) + '</p><div class="preview-inspector-foot"><span>Storyboard</span><span>Arquivo final em WebM</span></div></div></div><p class="preview-disclaimer">A prévia mostra o estilo visual. Use <b>Renderizar vídeo</b> para gerar o WebM vertical com gráficos animados, voz e legendas.</p></section>' +
       '<section class="panel video-timeline-panel"><div class="panel-heading"><div><span class="eyebrow">SEQUÊNCIA</span><h2>Storyboard / timeline</h2></div><button class="button button-secondary button-small" data-action="add-scene">＋ Adicionar cena</button></div>' + timeline + '</section>' +
       '<section class="panel video-script-panel"><div class="panel-heading"><div><span class="eyebrow">ROTEIRO</span><h2>Texto e narrativa</h2></div><span class="save-chip"><i></i> Auto-save</span></div><div class="form-grid">' + episodeField("Título do vídeo", "title", episode.title, "Nome do episódio") + episodeField("Resumo / gancho", "summary", episode.summary, "O que prende a atenção nos primeiros segundos?", "textarea") + episodeField("Roteiro completo", "script", episode.script, "Narração, falas, ações e texto na tela...", "textarea") + '</div><div class="save-hint"><span class="live-dot"></span> Roteiro salvo automaticamente.</div></section>' +
       '</div><aside class="video-editor-aside"><section class="panel video-settings-panel"><span class="eyebrow">CONFIGURAÇÃO DO VÍDEO</span><h3>Produção</h3><label class="field"><span>Status</span><select data-episode-field="status"><option ' + (episode.status === "Rascunho" ? "selected" : "") + '>Rascunho</option><option ' + (episode.status === "Em revisão" ? "selected" : "") + '>Em revisão</option><option ' + (episode.status === "Pronto" ? "selected" : "") + '>Pronto</option><option ' + (episode.status === "Publicado" ? "selected" : "") + '>Publicado</option></select></label><div class="production-spec-row"><span>Formato</span><b>Vertical · 9:16</b></div><div class="production-spec-row"><span>Duração estimada</span><b data-production-duration>' + totalSeconds + ' segundos</b></div><p class="muted small">Pense no primeiro segundo como uma promessa visual. Cada cena precisa entregar uma informação nova.</p><button class="button button-ghost button-wide" data-action="add-scene">＋ Nova cena</button><button class="button button-danger-ghost button-wide" data-action="delete-episode">Excluir episódio</button></section>' +
       '<section class="panel publish-panel"><span class="eyebrow">PACOTE DE PUBLICAÇÃO</span><h3>Depois de editar</h3><div class="form-grid">' + episodeField("Legenda do post", "caption", episode.caption, "Texto da publicação...", "textarea") + episodeField("Comentário fixado", "pinnedComment", episode.pinnedComment, "Contexto ou chamada para votar...", "textarea") + episodeField("Enquete para Stories", "storyPoll", episode.storyPoll, "Pergunta e opções para publicar...", "textarea") + '</div></section></aside></div>' +
       '<section class="panel video-scenes-panel"><div class="panel-heading"><div><span class="eyebrow">DECUPAGEM DETALHADA</span><h2>Cenas, prompts e áudio</h2><p class="muted small">Descreva o plano, o movimento, a voz e o texto que aparece em cada take.</p></div><button class="button button-secondary button-small" data-action="add-scene">＋ Adicionar cena</button></div>' + sceneCards + '</section></div>';
+  }
+
+  function showVideoRenderer(episode) {
+    if (!episode || !Array.isArray(episode.scenes) || !episode.scenes.length) {
+      notify("Adicione pelo menos uma cena antes de montar o vídeo.", "error");
+      return;
+    }
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      notify("Este navegador não oferece gravação de vídeo. Atualize o Chrome ou tente em outro navegador.", "error");
+      return;
+    }
+    const currentVoiceProvider = voiceSessionCredentials && voiceSessionCredentials.provider || (aiSessionCredentials && ["openai", "gemini"].includes(aiSessionCredentials.provider) ? aiSessionCredentials.provider : "openai");
+    openModal('<div class="modal-top"><div><span class="eyebrow">ESTÚDIO DE VÍDEO · 9:16</span><h2>Gerar vídeo final</h2><p>O site cria as vozes, anima os gráficos, sincroniza as legendas e exporta o WebM no seu aparelho.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><div class="video-render-layout"><canvas id="video-render-canvas" width="540" height="960" aria-label="Prévia do vídeo gráfico"></canvas><div class="video-render-controls"><div class="render-feature"><b>01 · Voz narrada por IA</b><span>Uma faixa em português para cada cena, com a mesma voz e ritmo ajustado ao texto.</span></div><div class="render-feature"><b>02 · Animação + legendas</b><span>Gráficos e textos sincronizados com as cenas do roteiro.</span></div><div class="render-feature"><b>03 · Arquivo pronto</b><span>Vídeo vertical 9:16 em WebM, com voz e trilha.</span></div><label class="field"><span>Provedor da voz</span><select id="video-voice-provider"><option value="openai" ' + (currentVoiceProvider === "openai" ? "selected" : "") + '>OpenAI</option><option value="gemini" ' + (currentVoiceProvider === "gemini" ? "selected" : "") + '>Google Gemini</option></select></label><p class="small muted">O áudio é gerado por cena usando a chave da API mantida nesta aba. O provedor pode cobrar por geração; verifique a tarifa da sua conta.</p><p class="small muted">A OpenAI anunciou o fim do modelo atual de voz em 6 jan. 2027; Gemini é a outra opção.</p><span id="video-render-status" class="small muted">Pronto para gerar voz e renderizar · até 90 segundos.</span><button class="button button-primary button-wide" data-action="start-video-render">Gerar voz e renderizar vídeo</button><a id="video-render-download" class="button button-secondary button-wide" hidden>Baixar vídeo</a></div></div>');
+    const canvas = $("#video-render-canvas");
+    drawVideoGraphic(canvas.getContext("2d"), episode, episode.scenes[0], 0, 0, 0);
+  }
+
+  function narrationText(scene, index, scenes, episode) {
+    const direct = String(scene.audio || "").trim();
+    if (direct) return direct.slice(0, 4000);
+    const paragraphs = String(episode.script || "").split(/\n+/).map((part) => part.trim()).filter(Boolean);
+    const sentences = paragraphs.flatMap((part) => part.match(/[^.!?]+[.!?]*/g) || [part]).map((part) => part.trim()).filter(Boolean);
+    if (sentences.length) {
+      const start = Math.floor(index * sentences.length / scenes.length);
+      const end = Math.max(start + 1, Math.floor((index + 1) * sentences.length / scenes.length));
+      return sentences.slice(start, end).join(" ").slice(0, 4000);
+    }
+    return String(scene.onScreen || "").trim().slice(0, 4000);
+  }
+
+  async function requestNarration(provider, credentials, text, style, voice, signal) {
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "voice", provider, apiKey: credentials.apiKey, text, style, voice }),
+      signal
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "A voz não pôde ser gerada.");
+    const binary = atob(result.audio || "");
+    if (!binary) throw new Error("O provedor não retornou um áudio válido.");
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: result.mimeType || "audio/wav" });
+  }
+
+  function drawVideoGraphic(ctx, episode, scene, sceneIndex, progress, overallProgress) {
+    const canvas = ctx.canvas;
+    const w = canvas.width, h = canvas.height;
+    const background = ctx.createLinearGradient(0, 0, w, h);
+    background.addColorStop(0, "#171326");
+    background.addColorStop(0.55, "#10121d");
+    background.addColorStop(1, "#0b1118");
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, w, h);
+    const glow = ctx.createRadialGradient(w * 0.76, h * 0.32, 15, w * 0.76, h * 0.32, w * 0.8);
+    glow.addColorStop(0, "rgba(137,106,255,.27)");
+    glow.addColorStop(1, "rgba(137,106,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#d1c8ff";
+    ctx.font = "600 20px Arial, sans-serif";
+    ctx.fillText("WHAT IF STUDIO", 42, 50);
+    ctx.fillStyle = "#9893ad";
+    ctx.font = "16px Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("PARTE " + String(episode.number || 1).padStart(2, "0"), w - 42, 54);
+    ctx.textAlign = "left";
+
+    const chartX = 48, chartY = 180, chartW = w - 96, chartH = 220;
+    ctx.strokeStyle = "rgba(201,193,230,.14)";
+    ctx.lineWidth = 1;
+    for (let line = 0; line < 4; line++) {
+      const y = chartY + line * chartH / 3;
+      ctx.beginPath(); ctx.moveTo(chartX, y); ctx.lineTo(chartX + chartW, y); ctx.stroke();
+    }
+    ctx.fillStyle = "#aaa3bd";
+    ctx.font = "14px Arial, sans-serif";
+    ctx.fillText("ARCO DA HISTÓRIA · ILUSTRATIVO", chartX, chartY - 30);
+    const points = 7;
+    const active = Math.max(1, Math.ceil(progress * (points - 1)));
+    const vals = Array.from({ length: points }, (_, index) => 0.72 - index * 0.067 + Math.sin(index * 1.35 + progress * 3) * 0.08);
+    ctx.beginPath();
+    for (let index = 0; index < active; index++) {
+      const x = chartX + index * chartW / (points - 1);
+      const y = chartY + vals[index] * chartH;
+      if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#a995ff";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    const endIndex = active - 1;
+    ctx.beginPath();
+    ctx.arc(chartX + endIndex * chartW / (points - 1), chartY + vals[endIndex] * chartH, 9, 0, Math.PI * 2);
+    ctx.fillStyle = "#80e0d2";
+    ctx.fill();
+
+    const title = String(scene.onScreen || scene.title || episode.title || "E se...? ").trim();
+    const wrapCanvasText = (text, x, y, maxWidth, lineHeight, maxLines) => {
+      const words = text.split(/\s+/);
+      let line = "", lineNo = 0;
+      for (const word of words) {
+        const test = line ? line + " " + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          ctx.fillText(line, x, y + lineNo * lineHeight);
+          line = word; lineNo += 1;
+          if (lineNo >= maxLines) break;
+        } else line = test;
+      }
+      if (line && lineNo < maxLines) ctx.fillText(lineNo === maxLines - 1 && words.length > 8 ? line.slice(0, 55) + "…" : line, x, y + lineNo * lineHeight);
+    };
+    ctx.fillStyle = "#f5f2ff";
+    ctx.font = "700 47px Arial, sans-serif";
+    wrapCanvasText(title, 48, 468, w - 96, 58, 3);
+    ctx.fillStyle = "#c4bfd2";
+    ctx.font = "23px Arial, sans-serif";
+    wrapCanvasText(String(scene.visual || scene.videoPrompt || episode.summary || "Uma escolha muda o rumo da história."), 50, 660, w - 100, 34, 4);
+    const caption = String(scene.audio || scene.onScreen || "").trim();
+    if (caption) {
+      const lines = [];
+      let line = "";
+      caption.split(/\s+/).forEach((word) => {
+        const next = line ? line + " " + word : word;
+        if (ctx.measureText(next).width > w - 112 && line) { lines.push(line); line = word; } else line = next;
+      });
+      if (line) lines.push(line);
+      const visible = lines.slice(0, 3);
+      ctx.fillStyle = "rgba(6,8,15,.86)";
+      ctx.beginPath(); ctx.roundRect(34, 700, w - 68, visible.length * 34 + 26, 14); ctx.fill();
+      ctx.fillStyle = "#ffffff"; ctx.font = "600 22px Arial, sans-serif";
+      visible.forEach((captionLine, index) => ctx.fillText(captionLine, 52, 712 + index * 32));
+    }
+    ctx.fillStyle = "#98a1b6";
+    ctx.font = "15px Arial, sans-serif";
+    ctx.fillText("CENA " + String(sceneIndex + 1).padStart(2, "0") + " / " + String(episode.scenes.length).padStart(2, "0"), 50, h - 114);
+    ctx.fillText(sceneIndex === episode.scenes.length - 1 && episode.storyPoll ? "VOTE NOS COMENTÁRIOS · A / B" : "ANIMAÇÃO 2D · GRÁFICO ILUSTRATIVO", 50, h - 84);
+    ctx.fillText("NARRAÇÃO GERADA POR IA", 50, h - 59);
+    ctx.fillStyle = "rgba(255,255,255,.18)";
+    ctx.fillRect(0, h - 12, w, 12);
+    ctx.fillStyle = "#9e88ff";
+    ctx.fillRect(0, h - 12, w * Math.max(0, Math.min(1, overallProgress)), 12);
+  }
+
+  async function startVideoRender(button) {
+    if (videoRenderState && videoRenderState.recording) return;
+    const project = currentProject();
+    const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
+    const canvas = $("#video-render-canvas");
+    const status = $("#video-render-status");
+    if (!episode || !canvas || !status) return;
+    const scenes = episode.scenes.slice(0, 10);
+    if (!scenes.length) {
+      status.textContent = "Adicione pelo menos uma cena antes de montar o vídeo.";
+      return;
+    }
+    if (typeof MediaRecorder === "undefined" || typeof canvas.captureStream !== "function") {
+      status.textContent = "Este navegador não oferece gravação WebM. Atualize o Chrome ou use outro navegador compatível.";
+      return;
+    }
+    const provider = $("#video-voice-provider")?.value || "openai";
+    const credentials = voiceSessionCredentials && voiceSessionCredentials.provider === provider
+      ? voiceSessionCredentials
+      : aiSessionCredentials && aiSessionCredentials.provider === provider ? aiSessionCredentials : null;
+    if (!credentials) {
+      showAiProviderModal("voice", provider);
+      return;
+    }
+    const texts = scenes.map((scene, index) => narrationText(scene, index, scenes, episode));
+    const emptyScene = texts.findIndex((text) => !text);
+    if (emptyScene >= 0) {
+      status.textContent = "A cena " + (emptyScene + 1) + " está sem fala. Escreva a narração no campo da cena ou no roteiro para gerar a voz.";
+      return;
+    }
+    if (texts.some((text) => text.length > 1200)) {
+      status.textContent = "Encurte as falas para até 1.200 caracteres por cena antes de renderizar.";
+      return;
+    }
+    const estimatedDuration = scenes.reduce((sum, scene, index) => sum + Math.max(2.8, Number(scene.duration) || 4, texts[index].length / 13), 0);
+    if (estimatedDuration > 90) {
+      status.textContent = "O roteiro deve caber em até 90 segundos. Encurte as falas antes de gerar as vozes.";
+      return;
+    }
+    const renderedScenes = scenes.map((scene, index) => ({ ...scene, audio: texts[index] }));
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = "Gerando vozes…";
+    const downloadLink = $("#video-render-download");
+    if (downloadLink) { downloadLink.hidden = true; downloadLink.removeAttribute("href"); }
+    let audioContext = null, stream = null, recorder = null;
+    const abortController = new AbortController();
+    videoRenderState = { recorder: null, recording: false, cancelled: false, abortController };
+    try {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error("Este navegador não oferece áudio para o render. Atualize o Chrome e tente novamente.");
+      audioContext = new AudioContextClass();
+      await audioContext.resume();
+      const clips = [];
+      for (let index = 0; index < scenes.length; index += 1) {
+        status.textContent = "Gerando voz da cena " + (index + 1) + " de " + scenes.length + "…";
+        const voiceStyle = scenes[index].audioDirection || "Narração natural em português brasileiro, clara e envolvente; respeite pausas e emoção do texto.";
+        const voiceName = provider === "openai" ? "coral" : "Kore";
+        const blob = await requestNarration(provider, credentials, texts[index], voiceStyle, voiceName, abortController.signal);
+        if (videoRenderState.cancelled) throw new Error("Renderização cancelada.");
+        const clip = await audioContext.decodeAudioData(await blob.arrayBuffer());
+        clips.push(clip);
+      }
+      const durations = clips.map((clip, index) => Math.max(2.8, Number(scenes[index].duration) || 4, clip.duration + 0.45));
+      const totalDuration = durations.reduce((sum, duration) => sum + duration, 0);
+      if (totalDuration > 90) throw new Error("O vídeo passou de 90 segundos com as falas geradas. Encurte o roteiro e tente de novo.");
+      status.textContent = "Preparando gravação do vídeo…";
+      await audioContext.resume();
+      const videoStream = canvas.captureStream(24);
+      const destination = audioContext.createMediaStreamDestination();
+      const musicGain = audioContext.createGain(); musicGain.gain.value = 0.035; musicGain.connect(destination);
+      [110, 164.81, 220].forEach((frequency, index) => {
+        const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain();
+        oscillator.type = index === 1 ? "sine" : "triangle"; oscillator.frequency.value = frequency;
+        gain.gain.value = index === 0 ? 0.22 : 0.09; oscillator.connect(gain).connect(musicGain); oscillator.start();
+      });
+      const startAt = audioContext.currentTime + 0.3;
+      let audioCursor = 0;
+      clips.forEach((clip, index) => {
+        const source = audioContext.createBufferSource(); const gain = audioContext.createGain();
+        source.buffer = clip; gain.gain.value = 1; source.connect(gain).connect(destination);
+        source.start(startAt + audioCursor);
+        audioCursor += durations[index];
+      });
+      stream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+      const supportedTypes = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+      const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
+      if (!mimeType) throw new Error("Este navegador não reconhece um formato WebM compatível. Tente Chrome ou Edge atualizados.");
+      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2200000 });
+      const chunks = [];
+      let cancelled = false;
+      recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+      const stopped = new Promise((resolve, reject) => {
+        recorder.onstop = resolve;
+        recorder.onerror = () => reject(new Error("A gravação do navegador falhou. Feche outras abas e tente novamente."));
+      });
+      videoRenderState.recorder = recorder;
+      videoRenderState.recording = true;
+      Object.defineProperty(videoRenderState, "cancelled", { get: () => cancelled, set: (value) => { cancelled = value; }, configurable: true });
+      button.textContent = "Renderizando…";
+      recorder.start(500);
+      const startedAt = performance.now();
+      const sceneOffsets = durations.map((_, index) => durations.slice(0, index).reduce((sum, duration) => sum + duration, 0));
+      let lastSceneIndex = -1;
+      const paint = (now) => {
+        if (!videoRenderState || cancelled) { if (recorder.state !== "inactive") recorder.stop(); return; }
+        const elapsed = Math.min(totalDuration, Math.max(0, (now - startedAt) / 1000));
+        let sceneIndex = durations.findIndex((duration, index) => elapsed < sceneOffsets[index] + duration);
+        if (sceneIndex < 0) sceneIndex = scenes.length - 1;
+        const cursor = sceneOffsets[sceneIndex];
+        const sceneDuration = durations[sceneIndex];
+        if (sceneIndex !== lastSceneIndex) {
+          lastSceneIndex = sceneIndex;
+          const tone = audioContext.createOscillator(); const envelope = audioContext.createGain();
+          tone.type = "sine"; tone.frequency.setValueAtTime(660, audioContext.currentTime);
+          tone.frequency.exponentialRampToValueAtTime(440, audioContext.currentTime + 0.2);
+          envelope.gain.setValueAtTime(0.0001, audioContext.currentTime);
+          envelope.gain.exponentialRampToValueAtTime(0.07, audioContext.currentTime + 0.02);
+          envelope.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.25);
+          tone.connect(envelope).connect(musicGain); tone.start(); tone.stop(audioContext.currentTime + 0.26);
+        }
+        const sceneProgress = Math.min(1, Math.max(0, (elapsed - cursor) / sceneDuration));
+        drawVideoGraphic(canvas.getContext("2d"), episode, renderedScenes[sceneIndex], sceneIndex, sceneProgress, elapsed / totalDuration);
+        status.textContent = "Renderizando cena " + (sceneIndex + 1) + " de " + scenes.length + " · " + Math.round(elapsed / totalDuration * 100) + "%";
+        if (elapsed >= totalDuration) { if (recorder.state !== "inactive") recorder.stop(); }
+        else requestAnimationFrame(paint);
+      };
+      requestAnimationFrame(paint);
+      await stopped;
+      const wasCancelled = cancelled;
+      if (!wasCancelled && chunks.length) {
+        const blob = new Blob(chunks, { type: mimeType });
+        if (blob.size < 1024) throw new Error("O arquivo gerado ficou vazio. Tente novamente no Chrome ou Edge.");
+        const url = URL.createObjectURL(blob);
+        const slug = String(episode.title || "episodio").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "episodio";
+        const link = $("#video-render-download");
+        if (link) { link.href = url; link.download = "what-if-" + slug + ".webm"; link.textContent = "Baixar vídeo no aparelho"; link.hidden = false; }
+        status.textContent = "Vídeo pronto · " + (blob.size / 1024 / 1024).toFixed(1) + " MB. Toque em Baixar vídeo para salvar.";
+      } else status.textContent = "Renderização cancelada.";
+    } catch (error) {
+      status.textContent = error && error.message ? error.message : "Não foi possível concluir a renderização. Confira a conexão e tente novamente.";
+    } finally {
+      if (recorder && recorder.state !== "inactive") { try { recorder.stop(); } catch (_) {} }
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (audioContext && audioContext.state !== "closed") await audioContext.close().catch(() => {});
+      videoRenderState = null;
+      if (button.isConnected) { button.disabled = false; button.textContent = originalLabel; }
+    }
   }
 
   function renderCharacters(project) {
@@ -305,7 +637,7 @@
         const options = poll.options || [];
         const total = options.reduce((sum, option) => sum + Number(option.votes || 0), 0);
         const max = Math.max(1, ...options.map((option) => Number(option.votes || 0)));
-        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div>' + (option.consequence ? '<small class="branch-consequence">Se vencer: ' + escapeHtml(option.consequence) + '</small>' : '') + '<div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
+        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div>' + (option.consequence ? '<small class="branch-consequence">Se vencer: ' + escapeHtml(option.consequence) + '</small>' : '') + '<div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div><form data-form="count-poll-comments" data-poll-id="' + escapeHtml(poll.id) + '" class="comment-vote-form"><label class="field"><span>Contar votos dos comentários</span><textarea name="comments" required placeholder="Cole aqui um comentário por linha. Ex.: A, 1, ou o nome exato da opção."></textarea></label><p class="small muted">Conta comentários que mencionem apenas uma opção. O texto colado é processado nesta aba e não é salvo.</p><button class="button button-secondary button-small" type="submit">Somar votos reconhecidos</button></form></article>';
       }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">◉</div><h3>Deixe o público decidir</h3><p>Uma boa enquete cria uma escolha clara e faz cada alternativa produzir um caminho diferente.</p><button class="button button-primary" data-action="add-poll">Criar enquete</button></div>');
   }
 
@@ -332,29 +664,24 @@
   }
 
   function renderExport(project) {
-    return '<div class="two-column"><section class="panel"><span class="eyebrow">SEU MATERIAL, SEU FORMATO</span><h2>Exportar projeto</h2><p class="muted">Baixe uma cópia do projeto para guardar, revisar ou levar para outra ferramenta.</p><div class="export-options"><button class="export-option" data-action="import-json"><span class="export-icon">↑</span><span><b>Importar backup JSON</b><small>Recupere um projeto exportado anteriormente.</small></span><span>↑</span></button><input type="file" accept="application/json,.json" data-import-file hidden><button class="export-option" data-action="export" data-format="json"><span class="export-icon">{ }</span><span><b>JSON completo</b><small>Todos os dados e a estrutura do projeto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="markdown"><span class="export-icon">M↓</span><span><b>Markdown</b><small>Documento legível com episódios, personagens e enquetes.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="txt"><span class="export-icon">TXT</span><span><b>Texto simples</b><small>Roteiros e informações em texto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="srt"><span class="export-icon">CC</span><span><b>Legendas SRT</b><small>Gera legendas a partir das falas e narrações das cenas.</small></span><span>↓</span></button></div></section><aside class="panel panel-soft"><span class="eyebrow">BACKUP</span><h3>Seus dados ficam com você.</h3><p>O salvamento local mantém o projeto neste navegador. Ative a sincronização nas configurações para guardar uma cópia na sua conta Supabase.</p><button class="button button-secondary button-wide" data-action="navigate" data-view="settings">Configurar sincronização →</button></aside></div>';
+    return '<div class="two-column"><section class="panel"><span class="eyebrow">SEU MATERIAL, SEU FORMATO</span><h2>Exportar projeto</h2><p class="muted">Baixe uma cópia do projeto para guardar, revisar ou levar para outra ferramenta.</p><div class="export-options"><button class="export-option" data-action="import-json"><span class="export-icon">↑</span><span><b>Importar backup JSON</b><small>Recupere um projeto exportado anteriormente.</small></span><span>↑</span></button><input type="file" accept="application/json,.json" data-import-file hidden><button class="export-option" data-action="export" data-format="json"><span class="export-icon">{ }</span><span><b>JSON completo</b><small>Todos os dados e a estrutura do projeto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="markdown"><span class="export-icon">M↓</span><span><b>Markdown</b><small>Documento legível com episódios, personagens e enquetes.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="txt"><span class="export-icon">TXT</span><span><b>Texto simples</b><small>Roteiros e informações em texto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="srt"><span class="export-icon">CC</span><span><b>Legendas SRT</b><small>Gera legendas a partir das falas e narrações das cenas.</small></span><span>↓</span></button></div></section><aside class="panel panel-soft"><span class="eyebrow">BACKUP</span><h3>Seus dados ficam com você.</h3><p>O salvamento local mantém o projeto neste navegador. Exporte um backup JSON para guardar uma cópia dos seus dados.</p><button class="button button-secondary button-wide" data-action="navigate" data-view="settings">Configurações →</button></aside></div>';
   }
 
   function renderSettings() {
-    const settings = getSettings();
-    const isConfigured = Boolean(settings.supabaseUrl && settings.supabaseAnon);
-    return '<div class="page-stack"><div class="section-heading"><div><span class="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p class="muted">Conecte os serviços opcionais. O estúdio continua funcionando localmente sem eles.</p></div></div>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">BACKUP NA NUVEM</span><h2>Supabase</h2></div><span class="service-status ' + (signedInUser ? "online" : isConfigured ? "configured" : "") + '">' + (signedInUser ? "Conectado" : isConfigured ? "Configurado" : "Opcional") + '</span></div><p class="muted">Este projeto já vem conectado ao Supabase. URL e chave publishable estão pré-configuradas; você só precisa entrar com seu e-mail para ativar a sincronização na nuvem.</p><form data-form="settings" class="form-grid">' +
-      '<label class="field"><span>Project URL</span><input name="supabaseUrl" type="url" placeholder="https://seu-projeto.supabase.co" value="' + escapeHtml(settings.supabaseUrl || "") + '"></label>' +
-      '<label class="field"><span>Anon / publishable key</span><input name="supabaseAnon" type="password" autocomplete="off" placeholder="Chave pública do Supabase" value="' + escapeHtml(settings.supabaseAnon || "") + '"></label><div class="form-actions"><button class="button button-primary" type="submit">Salvar configuração</button><span class="small muted">A chave pública fica no navegador e depende das políticas RLS do banco.</span></div></form>' +
-      '<div class="cloud-account">' + (signedInUser ? '<div><b>Conectado como ' + escapeHtml(signedInUser.email || "usuário") + '</b><p class="small muted">Os projetos serão sincronizados com sua conta.</p></div><button class="button button-secondary" data-action="cloud-signout">Sair</button><button class="button button-primary" data-action="cloud-sync">Sincronizar agora</button>' : '<form data-form="cloud-login" class="login-form"><label class="field"><span>Seu e-mail</span><input name="email" type="email" required placeholder="voce@exemplo.com"></label><button class="button button-secondary" type="submit" ' + (isConfigured ? "" : "disabled") + '>Enviar link de acesso</button></form>') + '</div>' +
-      '<p class="small muted">O schema e as políticas por usuário já foram instalados. Depois que o site estiver publicado, a URL final será adicionada à lista de redirecionamentos permitidos do Supabase.</p></section>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>Escolha sua IA</h2></div><span class="service-status ' + (aiSessionCredentials ? "configured" : "") + '">' + (aiSessionCredentials ? aiProviderLabel(aiSessionCredentials.provider) + " pronta" : "Chave necessária") + '</span></div><p>Antes de gerar roteiros, escolha OpenAI, Gemini ou Claude e informe sua própria chave de API. O uso é cobrado diretamente pelo serviço escolhido.</p><div class="ai-provider-status"><span class="live-dot"></span><span>' + (aiSessionCredentials ? "Chave ativa somente nesta aba · " + aiProviderLabel(aiSessionCredentials.provider) : "Nenhuma chave configurada nesta aba") + '</span></div><div class="button-group"><button class="button button-primary" data-action="configure-ai">' + (aiSessionCredentials ? "Trocar provedor ou chave" : "＋ Configurar chave de IA") + '</button>' + (aiSessionCredentials ? '<button class="button button-ghost" data-action="clear-ai-key">Esquecer chave</button>' : '') + '</div><p class="small muted">A chave é mantida apenas na memória desta aba e enviada ao servidor somente durante a geração. Ela não é salva no projeto, na nuvem ou no navegador; feche a aba para removê-la.</p><div class="callout-note">É necessário entrar no Supabase para aplicar o limite de 20 gerações por dia. Cada provedor pode exigir créditos ou faturamento próprios.</div></section>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">ARMAZENAMENTO</span><h2>Dados deste dispositivo</h2></div></div><p class="muted">Atualmente há <b>' + state.projects.length + '</b> projeto(s) salvos neste navegador.</p><button class="button button-danger-ghost" data-action="clear-local">Apagar dados locais deste navegador</button><p class="small muted">Esta ação não apaga cópias já sincronizadas na nuvem.</p></section></div>';
+    return '<div class="page-stack"><div class="section-heading"><div><span class="eyebrow">WORKSPACE DO KAI</span><h1>Seu estúdio</h1><p class="muted">Um espaço individual, sem contas e sem sincronização externa.</p></div></div>' +
+      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">SEUS DADOS</span><h2>Salvos neste navegador</h2></div><span class="service-status configured">Neste aparelho</span></div><p>Seus projetos são gravados automaticamente neste navegador. Exporte um backup JSON pela área Exportar. Limpar os dados do navegador pode apagar projetos sem backup.</p><p class="small muted">Este modo não sincroniza projetos entre aparelhos.</p><button class="button button-danger-ghost" data-action="clear-local">Apagar dados deste navegador</button></section>' +
+      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>Escolha sua IA</h2></div><span class="service-status ' + (aiSessionCredentials ? "configured" : "") + '">' + (aiSessionCredentials ? aiProviderLabel(aiSessionCredentials.provider) + " pronta" : "Chave necessária") + '</span></div><p>Configure OpenAI, Gemini ou Claude quando quiser gerar roteiros. O uso da API pode ser cobrado pelo provedor escolhido.</p><div class="button-group"><button class="button button-primary" data-action="configure-ai">' + (aiSessionCredentials ? "Trocar provedor ou chave" : "＋ Configurar chave de IA") + '</button>' + (aiSessionCredentials ? '<button class="button button-ghost" data-action="clear-ai-key">Esquecer chave</button>' : '') + '</div><p class="small muted">A chave fica na memória desta aba e não é salva no projeto ou no navegador.</p></section></div>';
   }
-
   function aiProviderLabel(provider) {
     return ({ openai: "OpenAI", gemini: "Gemini", claude: "Claude" })[provider] || "IA";
   }
 
-  function showAiProviderModal() {
-    const provider = aiSessionCredentials && aiSessionCredentials.provider || "openai";
-    openModal('<div class="modal-top"><div><span class="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h2>Conecte sua IA</h2><p>Escolha um provedor e informe uma chave de API sua.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><form data-form="ai-provider" class="form-grid ai-key-form"><label class="field full"><span>Provedor de IA</span><select name="provider"><option value="openai" ' + (provider === "openai" ? "selected" : "") + '>OpenAI</option><option value="gemini" ' + (provider === "gemini" ? "selected" : "") + '>Google Gemini</option><option value="claude" ' + (provider === "claude" ? "selected" : "") + '>Anthropic Claude</option></select></label><label class="field full"><span>Chave de API</span><input name="apiKey" type="password" required minlength="10" autocomplete="new-password" spellcheck="false" placeholder="Cole sua chave de API" autofocus></label><div class="provider-key-note full"><b>A chave fica nesta aba.</b><span>Ela será enviada ao servidor somente para a geração e apagada ao fechar a aba. Não cole uma chave em um computador compartilhado.</span></div><div class="callout-note full">O provedor cobra o uso da API diretamente na conta dele. Entrar no ChatGPT, Gemini ou Claude não substitui uma chave de API.</div><div class="modal-actions full"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar nesta aba e continuar</button></div></form>');
+  function showAiProviderModal(mode, preferredProvider) {
+    const voiceOnly = mode === "voice";
+    const provider = preferredProvider || (voiceOnly ? (voiceSessionCredentials && voiceSessionCredentials.provider || "openai") : (aiSessionCredentials && aiSessionCredentials.provider || "openai"));
+    const voiceOptions = '<option value="openai" ' + (provider === "openai" ? "selected" : "") + '>OpenAI</option><option value="gemini" ' + (provider === "gemini" ? "selected" : "") + '>Google Gemini</option>';
+    const allOptions = voiceOptions + '<option value="claude" ' + (provider === "claude" ? "selected" : "") + '>Anthropic Claude</option>';
+    openModal('<div class="modal-top"><div><span class="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h2>' + (voiceOnly ? "Conectar voz IA" : "Conecte sua IA") + '</h2><p>' + (voiceOnly ? "A narração usa OpenAI ou Google Gemini. Escolha o mesmo provedor selecionado no render." : "Escolha um provedor e informe uma chave de API sua.") + '</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><form data-form="' + (voiceOnly ? "ai-voice-provider" : "ai-provider") + '" class="form-grid ai-key-form"><label class="field full"><span>Provedor de IA</span><select name="provider">' + (voiceOnly ? voiceOptions : allOptions) + '</select></label><label class="field full"><span>Chave de API</span><input name="apiKey" type="password" required minlength="10" autocomplete="new-password" spellcheck="false" placeholder="Cole sua chave de API" autofocus></label><div class="provider-key-note full"><b>A chave fica nesta aba.</b><span>Ela será enviada ao servidor somente para a geração e apagada ao fechar a aba. Não cole uma chave em um computador compartilhado.</span></div><div class="callout-note full">O provedor pode cobrar o uso da API diretamente na conta dele. A chave do ChatGPT ou Gemini comum não substitui uma chave de API.</div><div class="modal-actions full"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar nesta aba</button></div></form>');
     const input = $('[name="apiKey"]', $("#modal-root"));
     if (input) input.focus();
   }
@@ -405,15 +732,9 @@
     if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Preparando..."; }
     notify("Pedindo uma estrutura à IA...", "info");
     try {
-      if (!supabaseClient || !signedInUser) {
-      throw new Error("Conecte o Supabase e entre na sua conta em Configurações antes de usar a IA.");
-    }
-    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-    const accessToken = sessionData && sessionData.session ? sessionData.session.access_token : null;
-    if (sessionError || !accessToken) throw new Error("Sua sessão expirou. Entre novamente em Configurações.");
     const response = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ kind: kind, project: project, episode: episode || null, provider: aiSessionCredentials.provider, apiKey: aiSessionCredentials.apiKey })
       });
       const body = await response.json().catch(() => ({}));
@@ -514,85 +835,6 @@
     save(); render();
   }
 
-  function scheduleCloudSync() {
-    clearTimeout(cloudSyncTimer);
-    cloudSyncTimer = setTimeout(() => syncCloud(false), 1400);
-  }
-
-  async function syncCloud(showMessage) {
-    if (!supabaseClient || !signedInUser) {
-      if (showMessage) notify("Conecte uma conta Supabase primeiro.", "error");
-      return;
-    }
-    const records = state.projects.map((project) => ({
-      id: project.id,
-      user_id: signedInUser.id,
-      data: project,
-      updated_at: project.updatedAt || new Date().toISOString()
-    }));
-    if (!records.length) {
-      if (showMessage) notify("Não há projetos locais para sincronizar.", "info");
-      return;
-    }
-    const { error } = await supabaseClient.from("projects").upsert(records, { onConflict: "id" });
-    if (error) {
-      console.error(error);
-      if (showMessage) notify("Falha na sincronização: " + error.message, "error");
-      return;
-    }
-    if (showMessage) notify("Projetos sincronizados com a nuvem.", "success");
-  }
-
-  async function loadCloudProjects() {
-    if (!supabaseClient || !signedInUser) return;
-    const { data, error } = await supabaseClient.from("projects").select("id,data,updated_at").eq("user_id", signedInUser.id);
-    if (error) { console.error(error); notify("Não foi possível carregar a nuvem: " + error.message, "error"); return; }
-    let changed = false;
-    (data || []).forEach((row) => {
-      if (!row.data) return;
-      const index = state.projects.findIndex((project) => project.id === row.id);
-      if (index < 0) { state.projects.push(row.data); changed = true; }
-      else {
-        const localTime = new Date(state.projects[index].updatedAt || 0).getTime();
-        const remoteTime = new Date(row.data.updatedAt || row.updated_at || 0).getTime();
-        if (remoteTime > localTime) { state.projects[index] = row.data; changed = true; }
-      }
-    });
-    if (changed) { save(false); render(); }
-    await syncCloud(false);
-  }
-
-  function initSupabase() {
-    const settings = getSettings();
-    if (!settings.supabaseUrl || !settings.supabaseAnon || !window.supabase || !window.supabase.createClient) return;
-    try {
-      supabaseClient = window.supabase.createClient(settings.supabaseUrl, settings.supabaseAnon);
-      supabaseClient.auth.getSession().then(({ data }) => {
-        signedInUser = data.session ? data.session.user : null;
-        if (signedInUser) loadCloudProjects();
-        render();
-      });
-      supabaseClient.auth.onAuthStateChange((_event, session) => {
-        signedInUser = session ? session.user : null;
-        render();
-        if (signedInUser) loadCloudProjects();
-      });
-    } catch (error) {
-      console.error(error);
-      notify("Não foi possível iniciar a conexão Supabase.", "error");
-    }
-  }
-
-  async function sendMagicLink(email) {
-    if (!supabaseClient) { notify("A conexão com o Supabase ainda não foi carregada. Atualize a página e tente novamente.", "error"); return; }
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email: email,
-      options: { emailRedirectTo: window.location.origin }
-    });
-    if (error) notify("Erro ao enviar link: " + error.message, "error");
-    else notify("Link de acesso enviado. Confira sua caixa de entrada.", "success");
-  }
-
   function downloadFile(name, contents, mime) {
     const blob = new Blob([contents], { type: mime || "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -653,8 +895,61 @@
       return closeModal();
     }
     if (action === "configure-ai") return showAiProviderModal();
-    if (action === "clear-ai-key") { aiSessionCredentials = null; render(); notify("Chave esquecida nesta aba.", "success"); return; }
+    if (action === "render-video") {
+      const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
+      return showVideoRenderer(episode);
+    }
+    if (action === "start-video-render") return startVideoRender(button);
+    if (action === "clear-ai-key") { aiSessionCredentials = null; voiceSessionCredentials = null; render(); notify("Chaves esquecidas nesta aba.", "success"); return; }
     if (action === "navigate") { activeView = button.dataset.view; render(); return; }
+    if (action === "copy-course-link") {
+      const link = window.location.origin + window.location.pathname + "?view=course";
+      try { await navigator.clipboard.writeText(link); notify("Link público do curso copiado.", "success"); }
+      catch (_) { notify("Não foi possível copiar o link neste navegador.", "error"); }
+      return;
+    }
+    if (action === "edit-publish-episode") {
+      const projectId = state.publishProjectId || state.projects[0]?.id;
+      const projectToEdit = state.projects.find((item) => item.id === projectId);
+      if (!projectToEdit) return;
+      state.activeProjectId = projectToEdit.id;
+      activeView = "editor"; activeTab = "episodes";
+      activeEpisodeId = state.publishEpisodeId || projectToEdit.episodes[0]?.id || null;
+      activeSceneId = null; save(false); render(); return;
+    }
+    if (action === "open-publish-poll") {
+      const projectToEdit = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      if (!projectToEdit) return;
+      state.activeProjectId = projectToEdit.id; activeView = "editor"; activeTab = "polls";
+      activeEpisodeId = null; activeSceneId = null; save(false); render(); return;
+    }
+    if (action === "add-to-queue") {
+      const projectToQueue = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      const episodeToQueue = projectToQueue && (projectToQueue.episodes.find((item) => item.id === state.publishEpisodeId) || projectToQueue.episodes[0]);
+      if (!projectToQueue || !episodeToQueue) { notify("Escolha um projeto com episódio para planejar.", "error"); return; }
+      const scheduleInput = $("[data-publish-time]");
+      const scheduledAt = scheduleInput && new Date(scheduleInput.value);
+      if (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) { notify("Escolha uma data e hora futuras.", "error"); return; }
+      const dayKey = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      const dailyCount = state.publishQueue.filter((item) => dayKey(new Date(item.scheduledAt)) === dayKey(scheduledAt)).length;
+      if (dailyCount >= 4) { notify("A fila já tem quatro vídeos planejados para esse dia.", "error"); return; }
+      if (state.publishQueue.some((item) => item.episodeId === episodeToQueue.id && item.projectId === projectToQueue.id)) { notify("Este episódio já está na fila.", "error"); return; }
+      state.publishQueue.push({ id: uid(), projectId: projectToQueue.id, episodeId: episodeToQueue.id, scheduledAt: scheduledAt.toISOString(), status: "planned" });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); notify("Vídeo adicionado ao planejamento.", "success"); return;
+    }
+    if (action === "remove-from-queue") {
+      state.publishQueue = state.publishQueue.filter((item) => item.id !== button.dataset.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
+    if (action === "copy-publish") {
+      const projectToCopy = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      const episodeToCopy = projectToCopy && projectToCopy.episodes.find((item) => item.id === state.publishEpisodeId) || projectToCopy?.episodes[0];
+      const text = episodeToCopy && (button.dataset.field === "caption" ? episodeToCopy.caption : episodeToCopy.script);
+      if (!text) { notify("Este campo ainda está vazio.", "error"); return; }
+      try { await navigator.clipboard.writeText(text); notify("Texto copiado.", "success"); }
+      catch (_) { notify("Não foi possível copiar automaticamente neste navegador.", "error"); }
+      return;
+    }
     if (action === "open-project") return openProject(button.dataset.id);
     if (action === "switch-tab") { activeTab = button.dataset.tab; activeEpisodeId = null; activeSceneId = null; render(); return; }
     if (action === "select-episode") { activeTab = "episodes"; activeEpisodeId = button.dataset.id; activeSceneId = null; render(); return; }
@@ -667,7 +962,6 @@
     if (action === "add-continuity") return showContinuityModal();
     if (action === "add-source") return showSourceModal();
     if (action === "generate-next-episode") {
-      if (!supabaseClient || !signedInUser) { notify("Conecte o Supabase e entre em Configurações antes de gerar com IA.", "error"); return; }
       if (!aiSessionCredentials || !aiSessionCredentials.apiKey) {
         pendingAiGeneration = "next-episode";
         showAiProviderModal();
@@ -744,29 +1038,17 @@
     if (action === "delete-project" && project) {
       if (!window.confirm("Excluir este projeto? A cópia local será removida e, se houver conexão, a cópia na nuvem também será excluída.")) return;
       const projectId = project.id;
-      let cloudDeleteError = null;
-      if (supabaseClient && signedInUser) {
-        const { error } = await supabaseClient.from("projects").delete().eq("id", projectId).eq("user_id", signedInUser.id);
-        cloudDeleteError = error;
-      }
       state.projects = state.projects.filter((item) => item.id !== projectId);
       state.activeProjectId = null;
       activeView = "projects";
       activeEpisodeId = null;
       save(false);
       render();
-      if (cloudDeleteError) notify("Projeto removido deste dispositivo, mas a cópia na nuvem não foi apagada: " + cloudDeleteError.message, "error");
-      else notify("Projeto excluído.", "success");
+      notify("Projeto excluído deste dispositivo.", "success");
       return;
     }
     if (action === "import-json") { const input = $('[data-import-file]'); if (input) input.click(); return; }
     if (action === "export") return exportProject(button.dataset.format);
-    if (action === "cloud-sync") return syncCloud(true);
-    if (action === "cloud-signout" && supabaseClient) {
-      const { error } = await supabaseClient.auth.signOut();
-      if (error) notify(error.message, "error"); else { signedInUser = null; render(); notify("Sessão encerrada.", "success"); }
-      return;
-    }
     if (action === "clear-local") {
       if (!window.confirm("Apagar todos os projetos salvos neste dispositivo? Esta ação não pode ser desfeita.")) return;
       state = defaultState(); save(false); activeView = "dashboard"; render(); notify("Dados locais apagados.", "success"); return;
@@ -775,6 +1057,24 @@
 
   document.addEventListener("input", (event) => {
     const target = event.target;
+    if (target.dataset.courseField) {
+      state.course[target.dataset.courseField] = target.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const coursePreview = $(".course-hero");
+      if (coursePreview) {
+        const heading = $("h1", coursePreview), description = $(".hero-copy p", coursePreview), price = $(".course-price", coursePreview);
+        const note = $("[data-course-payment-note]");
+        if (target.dataset.courseField === "title" && heading) heading.textContent = target.value;
+        if (target.dataset.courseField === "description" && description) description.textContent = target.value;
+        if (target.dataset.courseField === "price" && price) price.textContent = target.value || "Consulte as condições pelo WhatsApp";
+        if (target.dataset.courseField === "paymentNote" && note) note.textContent = target.value;
+        if (target.dataset.courseField === "title") {
+          const contact = $("a.button", coursePreview);
+          if (contact) contact.href = "https://wa.me/5582993485560?text=" + encodeURIComponent("Olá! Quero saber mais sobre o curso: " + target.value);
+        }
+      }
+      return;
+    }
     const project = currentProject();
     if (!project) return;
     if (target.dataset.bind) {
@@ -844,6 +1144,16 @@
 
   document.addEventListener("change", async (event) => {
     const target = event.target;
+    if (target.dataset.publishSelect === "project") {
+      state.publishProjectId = target.value;
+      const selectedProject = state.projects.find((item) => item.id === target.value);
+      state.publishEpisodeId = selectedProject && selectedProject.episodes[0] ? selectedProject.episodes[0].id : null;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
+    if (target.dataset.publishSelect === "episode") {
+      state.publishEpisodeId = target.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
     if (target.dataset.importFile !== undefined && target.files && target.files[0]) {
       const file = target.files[0];
       if (file.size > 2 * 1024 * 1024) { notify("O arquivo precisa ter até 2 MB.", "error"); target.value = ""; return; }
@@ -909,6 +1219,20 @@
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     const type = form.dataset.form;
+    if (type === "ai-voice-provider") {
+      const provider = String(data.provider || "");
+      const apiKey = String(data.apiKey || "").trim();
+      if (!["openai", "gemini"].includes(provider) || apiKey.length < 10 || apiKey.length > 512) {
+        notify("Escolha OpenAI ou Gemini e informe uma chave de API válida.", "error");
+        return;
+      }
+      voiceSessionCredentials = { provider, apiKey };
+      closeModal();
+      render();
+      showVideoRenderer(currentProject()?.episodes.find((item) => item.id === activeEpisodeId));
+      notify("Chave de voz disponível apenas nesta aba.", "success");
+      return;
+    }
     if (type === "ai-provider") {
       const provider = String(data.provider || "");
       const apiKey = String(data.apiKey || "").trim();
@@ -917,13 +1241,13 @@
         return;
       }
       aiSessionCredentials = { provider, apiKey };
+      if (["openai", "gemini"].includes(provider)) voiceSessionCredentials = { provider, apiKey };
       const pending = pendingAiGeneration;
       pendingAiGeneration = null;
       closeModal();
       render();
       notify("" + aiProviderLabel(provider) + " pronta nesta aba.", "success");
       if (pending === "next-episode") {
-        if (!supabaseClient || !signedInUser) { notify("Entre na sua conta Supabase antes de gerar com IA.", "error"); return; }
         addEpisode();
         return generate("episode");
       }
@@ -960,19 +1284,49 @@
       project.sources.push({ id: uid(), title: data.title, url: url, claim: data.claim || "", status: "Para verificar", createdAt: new Date().toISOString() });
       save(); closeModal(); render(); notify("Referência adicionada.", "success"); return;
     }
-    if (type === "settings") {
-      const settings = getSettings();
-      settings.supabaseUrl = String(data.supabaseUrl || "").trim().replace(/\/$/, "");
-      settings.supabaseAnon = String(data.supabaseAnon || "").trim();
-      saveSettings(settings);
-      supabaseClient = null; signedInUser = null; initSupabase(); render();
-      notify("Configuração do Supabase salva neste dispositivo.", "success"); return;
-    }
-    if (type === "cloud-login") {
-      await sendMagicLink(data.email); return;
+    if (type === "count-poll-comments" && project) {
+      const poll = project.polls.find((item) => item.id === form.dataset.pollId);
+      if (!poll || !Array.isArray(poll.options)) return;
+      const lines = String(data.comments || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+      const totals = poll.options.map(() => 0);
+      let ignored = 0;
+      lines.forEach((line) => {
+        const normalizedLine = normalize(line);
+        let matched = normalizedLine === "a" && poll.options[0] ? [{ index: 0 }] : normalizedLine === "b" && poll.options[1] ? [{ index: 1 }] : [];
+        if (!matched.length) matched = poll.options.map((option, index) => ({ index, label: normalize(option.label) })).filter((item) => item.label && (normalizedLine === item.label || normalizedLine.includes(item.label)));
+        if (!matched.length) {
+          const choice = normalizedLine.match(/^\s*([1-6a-f])(?:\s*[-:.)]\s*|\s+)/i);
+          if (choice) {
+            const code = choice[1].toLowerCase();
+            const index = /^[1-6]$/.test(code) ? Number(code) - 1 : code.charCodeAt(0) - 97;
+            if (index >= 0 && index < poll.options.length) matched = [{ index }];
+          }
+        }
+        if (matched.length === 1) totals[matched[0].index] += 1;
+        else ignored += 1;
+      });
+      const recognized = totals.reduce((sum, value) => sum + value, 0);
+      if (!recognized) { notify("Não encontrei comentários que correspondam a uma opção sem ambiguidade.", "error"); return; }
+      poll.options.forEach((option, index) => { option.votes = Number(option.votes || 0) + totals[index]; });
+      const finalCounts = poll.options.map((option) => Number(option.votes || 0));
+      const highScore = Math.max(...finalCounts);
+      const winners = finalCounts.map((value, index) => value === highScore ? index : -1).filter((index) => index >= 0);
+      if (highScore > 0 && winners.length === 1) {
+        const winner = poll.options[winners[0]];
+        poll.winner = winner.label;
+        project.continuity.push({ id: uid(), type: "Decisão da audiência", text: "A votação pelos comentários em \"" + poll.question + "\" escolheu \"" + winner.label + "\". " + (winner.consequence || poll.consequence || ""), createdAt: new Date().toISOString() });
+      }
+      save(); render();
+      notify(recognized + " voto(s) somado(s). " + ignored + " comentário(s) ignorado(s)." + (winners.length === 1 ? " Roteiro seguinte atualizado com a opção vencedora." : " Empate: escolha a vencedora depois."), "success"); return;
     }
   });
 
-  initSupabase();
   render();
 })();
+
+
+
+
+
+
