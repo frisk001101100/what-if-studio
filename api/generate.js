@@ -81,7 +81,7 @@ export default async function handler(req, res) {
           "Crie de 4 a 8 cenas. Para cada cena inclua title, visual, imagePrompt, videoPrompt, audio, audioDirection, onScreen, duration (número em segundos) e sfx.",
           "Inclua também title, summary, script, caption, pinnedComment e storyPoll. O script deve ser filmável e adequado a vídeos curtos.",
           "Mantenha conteúdo apropriado para público adolescente e geral: sem conteúdo sexual explícito, sem violência gráfica e sem descrições de automutilação.",
-          "Não contradiga regras do universo nem fatos já estabelecidos."
+          "Não contradiga regras do universo nem fatos já estabelecidos. Se uma enquete tiver opção vencedora registrada, trate essa opção e sua consequência específica como o caminho oficial da história e reflita isso no episódio novo."
         ].join(" ")
       : [
           "Você é showrunner, editor de roteiro e designer de narrativas interativas.",
