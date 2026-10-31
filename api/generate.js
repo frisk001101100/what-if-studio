@@ -77,8 +77,8 @@ export default async function handler(req, res) {
           "Responda somente com um objeto JSON válido, sem markdown ou texto fora do JSON.",
           "Idioma: português brasileiro. Mantenha o tom e a premissa fornecidos.",
           "O roteiro precisa ter começo forte, desenvolvimento claro, virada e gancho final.",
-          "Crie de 4 a 8 cenas. Para cada cena inclua title, visual, audio, onScreen, duration (número em segundos) e sfx.",
-          "Inclua também title, summary e script. O script deve ser filmável e adequado a vídeos curtos.",
+          "Crie de 4 a 8 cenas. Para cada cena inclua title, visual, imagePrompt, videoPrompt, audio, audioDirection, onScreen, duration (número em segundos) e sfx.",
+          "Inclua também title, summary, script, caption, pinnedComment e storyPoll. O script deve ser filmável e adequado a vídeos curtos.",
           "Mantenha conteúdo apropriado para público adolescente e geral: sem conteúdo sexual explícito, sem violência gráfica e sem descrições de automutilação.",
           "Não contradiga regras do universo nem fatos já estabelecidos."
         ].join(" ")
@@ -86,7 +86,7 @@ export default async function handler(req, res) {
           "Você é showrunner, editor de roteiro e designer de narrativas interativas.",
           "Responda somente com um objeto JSON válido, sem markdown ou texto fora do JSON.",
           "Idioma: português brasileiro. Respeite a premissa e desenvolva um conceito original e filmável.",
-          "Crie um pacote com title, premise, setting, visualStyle, universe (lista de 3 a 6 regras), characters (3 a 5 objetos com name, role, description, appearance e voice), episodes (3 a 5 objetos com title, summary, script e scenes), polls (1 a 3 objetos com question, options como lista de objetos {label}, consequence) e continuity (lista de fatos curtos).",
+          "Crie um pacote com title, premise, setting, visualStyle, universe (lista de 3 a 6 regras), characters (3 a 5 objetos com name, role, description, appearance e voice), episodes (3 a 5 objetos com title, summary, script, caption, pinnedComment, storyPoll e scenes; cada cena com visual, imagePrompt, videoPrompt, audio, audioDirection, onScreen, duration e sfx), polls (1 a 3 objetos com question, options como lista de objetos {label}, consequence) e continuity (lista de fatos curtos).",
           "Cada episódio deve mover a trama e terminar com gancho. Pelo menos uma votação deve criar consequências narrativas diferentes.",
           "Mantenha a lógica interna consistente. Não apresente ficção como fato. Se o formato for histórico ou documental, marque pontos que precisem de checagem em vez de inventar fatos.",
           "Mantenha conteúdo apropriado para público adolescente e geral: sem conteúdo sexual explícito, sem violência gráfica e sem descrições de automutilação."
