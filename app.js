@@ -44,6 +44,7 @@
   }
 
   function save(allowCloud) {
+    if (allowCloud !== false) { const active = currentProject(); if (active) active.updatedAt = new Date().toISOString(); }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     const label = $("#save-status");
     if (label) label.textContent = "Salvo neste dispositivo";
@@ -225,7 +226,7 @@
   function renderUniverse(project) {
     return '<div class="two-column"><section class="panel"><div class="panel-heading"><div><span class="eyebrow">WORLD BUILDING</span><h2>Regras do universo</h2></div><span class="panel-icon">⌘</span></div>' +
       field("Cenário / época", "world.setting", project.world.setting, "Onde e quando a história acontece?", "textarea") +
-      field("Regras que não podem ser quebradas", "world.rulesText", (project.world.rules || []).join("\\n"), "Uma regra por linha", "textarea") +
+      field("Regras que não podem ser quebradas", "world.rulesText", (project.world.rules || []).join("\n"), "Uma regra por linha", "textarea") +
       field("Direção visual", "world.visualStyle", project.world.visualStyle, "Paleta, textura, referências visuais...", "textarea") +
       '<p class="small muted">As regras do universo servem como referência para novos episódios e para evitar contradições.</p></section><aside class="panel panel-accent"><span class="eyebrow">CONTINUIDADE</span><h2>Coerência é parte da história.</h2><p>Registre o que é verdade no seu mundo. Uma escolha da audiência pode mudar o rumo da narrativa, mas a mudança precisa ficar documentada.</p><button class="button button-secondary button-wide" data-action="switch-tab" data-tab="continuity">Abrir registro de continuidade →</button></aside></div>';
   }
@@ -236,7 +237,7 @@
         const options = poll.options || [];
         const total = options.reduce((sum, option) => sum + Number(option.votes || 0), 0);
         const max = Math.max(1, ...options.map((option) => Number(option.votes || 0)));
-        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div><div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
+        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div><div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
       }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">◉</div><h3>Deixe o público decidir</h3><p>Uma boa enquete cria uma escolha clara e faz cada alternativa produzir um caminho diferente.</p><button class="button button-primary" data-action="add-poll">Criar enquete</button></div>');
   }
 
@@ -536,6 +537,16 @@
       const poll = project.polls.find((item) => item.id === button.dataset.id);
       const option = poll && poll.options[Number(button.dataset.index)];
       if (option) { option.votes = Number(option.votes || 0) + 1; save(); render(); }
+      return;
+    }
+    if (action === "set-winner" && project) {
+      const poll = project.polls.find((item) => item.id === button.dataset.id);
+      const option = poll && poll.options[Number(button.dataset.index)];
+      if (poll && option) {
+        poll.winner = option.label;
+        project.continuity.push({ id: uid(), type: "Decisão da audiência", text: "A enquete \"" + poll.question + "\" foi vencida por: " + option.label + ". " + (poll.consequence || ""), createdAt: new Date().toISOString() });
+        save(); render(); notify("Resultado registrado na continuidade.", "success");
+      }
       return;
     }
     if (action === "export") return exportProject(button.dataset.format);
