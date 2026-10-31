@@ -595,7 +595,10 @@
     if (action === "add-poll") return showPollModal();
     if (action === "add-continuity") return showContinuityModal();
     if (action === "add-source") return showSourceModal();
-    if (action === "generate-next-episode") { addEpisode(); return generate("episode"); }
+    if (action === "generate-next-episode") {
+      if (!supabaseClient || !signedInUser) { notify("Conecte o Supabase e entre em Configurações antes de gerar com IA.", "error"); return; }
+      addEpisode(); return generate("episode");
+    }
     if (action === "save-version" && project) {
       const snapshot = JSON.parse(JSON.stringify(project));
       delete snapshot.history;
@@ -609,9 +612,10 @@
       if (!version || !version.snapshot) return;
       if (!window.confirm("Restaurar esta versão? O estado atual será substituído, mas seus pontos de restauração serão mantidos.")) return;
       const restored = JSON.parse(JSON.stringify(version.snapshot));
+      const projectId = project.id;
       const history = project.history || [];
       Object.keys(project).forEach((key) => delete project[key]);
-      Object.assign(project, restored, { id: project.id, history, updatedAt: new Date().toISOString() });
+      Object.assign(project, restored, { id: projectId, history, updatedAt: new Date().toISOString() });
       save(); render(); notify("Versão restaurada.", "success"); return;
     }
     if (action === "delete-version" && project) {
@@ -739,7 +743,7 @@
         imported.polls = Array.isArray(imported.polls) ? imported.polls.map((item) => ({ ...item, id: uid() })) : [];
         imported.continuity = Array.isArray(imported.continuity) ? imported.continuity.map((item) => ({ ...item, id: uid() })) : [];
         imported.sources = Array.isArray(imported.sources) ? imported.sources.map((item) => ({ ...item, id: uid() })) : [];
-        imported.history = Array.isArray(imported.history) ? imported.history.map((item) => ({ ...item, id: uid() })) : [];
+        imported.history = [];
         state.projects.unshift(imported);
         state.activeProjectId = imported.id;
         activeView = "editor";
