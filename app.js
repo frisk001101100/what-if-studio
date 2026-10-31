@@ -104,7 +104,8 @@
       episodes: [makeEpisode(1)],
       polls: [],
       continuity: [],
-      sources: []
+      sources: [],
+      history: []
     };
     state.projects.unshift(project);
     state.activeProjectId = project.id;
@@ -174,7 +175,7 @@
   function renderEditor(project) {
     const tabs = [
       ["overview", "Visão geral"], ["episodes", "Episódios"], ["characters", "Personagens"],
-      ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["sources", "Fontes"], ["export", "Exportar"]
+      ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["sources", "Fontes"], ["history", "Versões"], ["export", "Exportar"]
     ];
     return '<div class="page-stack editor-stack"><div class="editor-topline"><button class="text-button" data-action="navigate" data-view="projects">← Projetos</button><span class="project-tag">' + escapeHtml(project.format) + '</span><span class="status-pill">' + escapeHtml(project.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-project">✦ Desenvolver com IA</button><button class="button button-danger-ghost button-small" data-action="delete-project">Excluir projeto</button></div>' +
       '<div class="editor-heading"><div><h1>' + escapeHtml(project.title) + '</h1><p>' + escapeHtml(project.premise || "Uma história em construção.") + '</p></div><div class="editor-metrics"><span><b>' + project.episodes.length + '</b> episódios</span><span><b>' + project.characters.length + '</b> personagens</span><span><b>' + project.polls.length + '</b> enquetes</span></div></div>' +
@@ -189,6 +190,7 @@
     if (activeTab === "polls") return renderPolls(project);
     if (activeTab === "continuity") return renderContinuity(project);
     if (activeTab === "sources") return renderSources(project);
+    if (activeTab === "history") return renderHistory(project);
     if (activeTab === "export") return renderExport(project);
     return renderOverview(project);
   }
@@ -224,7 +226,7 @@
 
   function renderEpisodes(project) {
     const episode = project.episodes.find((item) => item.id === activeEpisodeId);
-    if (!episode) return '<div class="section-heading"><div><span class="eyebrow">NARRATIVA</span><h2>Estrutura de episódios</h2><p class="muted">Cada episódio deve avançar a história e deixar uma pergunta para o próximo.</p></div><button class="button button-primary" data-action="add-episode">＋ Novo episódio</button></div>' +
+    if (!episode) return '<div class="section-heading"><div><span class="eyebrow">NARRATIVA</span><h2>Estrutura de episódios</h2><p class="muted">Cada episódio deve avançar a história e deixar uma pergunta para o próximo.</p></div><div class="button-group"><button class="button button-secondary" data-action="generate-next-episode">✦ Próximo episódio com IA</button><button class="button button-primary" data-action="add-episode">＋ Novo episódio</button></div></div>' +
       (project.episodes.length ? '<div class="episode-list">' + project.episodes.map((item) => '<article class="episode-row"><button class="episode-open" data-action="select-episode" data-id="' + escapeHtml(item.id) + '"><span class="episode-number">' + String(item.number).padStart(2, "0") + '</span><span class="episode-mini-copy"><b>' + escapeHtml(item.title) + '</b><small>' + escapeHtml(item.summary || "Adicione um resumo e comece o roteiro.") + '</small></span><span class="status-pill">' + escapeHtml(item.status) + '</span><span class="muted">→</span></button></article>').join("") + '</div>' : '<div class="empty-state"><h3>Sem episódios</h3><p>Adicione o primeiro capítulo da sua história.</p></div>');
     return '<div class="section-heading"><div><button class="text-button" data-action="back-episodes">← Todos os episódios</button><h2>' + escapeHtml(episode.title) + '</h2></div><button class="button button-secondary button-small" data-action="generate-episode">✦ Gerar roteiro com IA</button></div>' +
       '<div class="two-column"><section class="panel"><div class="form-grid">' + episodeField("Título", "title", episode.title, "Nome do episódio") + episodeField("Resumo", "summary", episode.summary, "O que muda neste episódio?", "textarea") + episodeField("Roteiro completo", "script", episode.script, "Narração, falas, ações e texto na tela...", "textarea") + '</div><div class="save-hint"><span class="live-dot"></span> Roteiro salvo automaticamente.</div></section>' +
@@ -276,6 +278,12 @@
           (safeUrl ? '<a class="source-link" href="' + escapeHtml(safeUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(safeUrl) + ' ↗</a>' : '<span class="small muted">Nenhum link informado</span>') +
           '<label class="field source-status"><span>Estado da checagem</span><select data-source-id="' + escapeHtml(source.id) + '" data-source-field="status"><option ' + (source.status === "Para verificar" ? "selected" : "") + '>Para verificar</option><option ' + (source.status === "Em análise" ? "selected" : "") + '>Em análise</option><option ' + (source.status === "Confirmada" ? "selected" : "") + '>Confirmada</option><option ' + (source.status === "Descartada" ? "selected" : "") + '>Descartada</option></select></label></article>';
       }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">⌕</div><h3>Organize suas referências</h3><p>Registre uma fonte por afirmação importante. Para histórias documentais, diferencie fatos confirmados de hipóteses e ficção.</p><button class="button button-primary" data-action="add-source">Adicionar primeira fonte</button></div>');
+  }
+
+  function renderHistory(project) {
+    const history = Array.isArray(project.history) ? project.history.slice().reverse() : [];
+    return '<div class="section-heading"><div><span class="eyebrow">PONTOS DE RESTAURAÇÃO</span><h2>Versões do projeto</h2><p class="muted">Salve marcos antes de mudanças importantes e restaure uma versão sem perder o registro das demais.</p></div><button class="button button-primary" data-action="save-version">＋ Salvar versão atual</button></div>' +
+      (history.length ? '<div class="version-list">' + history.map((version) => '<article class="version-card"><div class="version-symbol">↺</div><div class="version-copy"><b>' + escapeHtml(version.snapshot && version.snapshot.title || project.title) + '</b><small>' + dateLabel(version.createdAt) + ' · ' + escapeHtml(version.label || "Ponto de restauração") + '</small></div><button class="button button-secondary button-small" data-action="restore-version" data-id="' + escapeHtml(version.id) + '">Restaurar</button><button class="icon-button danger-text" data-action="delete-version" data-id="' + escapeHtml(version.id) + '" title="Excluir versão">×</button></article>').join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">↺</div><h3>Nenhuma versão salva</h3><p>Crie um ponto de restauração antes de reescrever um episódio ou mudar o rumo da história.</p><button class="button button-primary" data-action="save-version">Salvar primeira versão</button></div>');
   }
 
   function renderExport(project) {
@@ -587,6 +595,29 @@
     if (action === "add-poll") return showPollModal();
     if (action === "add-continuity") return showContinuityModal();
     if (action === "add-source") return showSourceModal();
+    if (action === "generate-next-episode") { addEpisode(); return generate("episode"); }
+    if (action === "save-version" && project) {
+      const snapshot = JSON.parse(JSON.stringify(project));
+      delete snapshot.history;
+      project.history = Array.isArray(project.history) ? project.history : [];
+      project.history.push({ id: uid(), createdAt: new Date().toISOString(), label: "Ponto de restauração", snapshot });
+      if (project.history.length > 20) project.history.shift();
+      save(); render(); notify("Versão salva.", "success"); return;
+    }
+    if (action === "restore-version" && project) {
+      const version = (project.history || []).find((item) => item.id === button.dataset.id);
+      if (!version || !version.snapshot) return;
+      if (!window.confirm("Restaurar esta versão? O estado atual será substituído, mas seus pontos de restauração serão mantidos.")) return;
+      const restored = JSON.parse(JSON.stringify(version.snapshot));
+      const history = project.history || [];
+      Object.keys(project).forEach((key) => delete project[key]);
+      Object.assign(project, restored, { id: project.id, history, updatedAt: new Date().toISOString() });
+      save(); render(); notify("Versão restaurada.", "success"); return;
+    }
+    if (action === "delete-version" && project) {
+      project.history = (project.history || []).filter((item) => item.id !== button.dataset.id);
+      save(); render(); return;
+    }
     if (action === "generate-project") return generate("story-pack");
     if (action === "generate-episode") return generate("episode");
     if (action === "delete-character" && project) {
@@ -708,6 +739,7 @@
         imported.polls = Array.isArray(imported.polls) ? imported.polls.map((item) => ({ ...item, id: uid() })) : [];
         imported.continuity = Array.isArray(imported.continuity) ? imported.continuity.map((item) => ({ ...item, id: uid() })) : [];
         imported.sources = Array.isArray(imported.sources) ? imported.sources.map((item) => ({ ...item, id: uid() })) : [];
+        imported.history = Array.isArray(imported.history) ? imported.history.map((item) => ({ ...item, id: uid() })) : [];
         state.projects.unshift(imported);
         state.activeProjectId = imported.id;
         activeView = "editor";
