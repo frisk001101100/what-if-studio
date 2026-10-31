@@ -259,7 +259,7 @@
       '<label class="field"><span>Anon / publishable key</span><input name="supabaseAnon" type="password" autocomplete="off" placeholder="Chave pública do Supabase" value="' + escapeHtml(settings.supabaseAnon || "") + '"></label><div class="form-actions"><button class="button button-primary" type="submit">Salvar configuração</button><span class="small muted">A chave pública fica no navegador e depende das políticas RLS do banco.</span></div></form>' +
       '<div class="cloud-account">' + (signedInUser ? '<div><b>Conectado como ' + escapeHtml(signedInUser.email || "usuário") + '</b><p class="small muted">Os projetos serão sincronizados com sua conta.</p></div><button class="button button-secondary" data-action="cloud-signout">Sair</button><button class="button button-primary" data-action="cloud-sync">Sincronizar agora</button>' : '<form data-form="cloud-login" class="login-form"><label class="field"><span>Seu e-mail</span><input name="email" type="email" required placeholder="voce@exemplo.com"></label><button class="button button-secondary" type="submit" ' + (isConfigured ? "" : "disabled") + '>Enviar link de acesso</button></form>') + '</div>' +
       '<p class="small muted">Antes de conectar, execute o arquivo supabase/schema.sql no SQL Editor do seu projeto Supabase e configure a URL de redirecionamento de autenticação.</p></section>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>OpenAI API</h2></div><span class="service-status configured">Servidor</span></div><p>A geração por IA usa a função segura <code>/api/generate</code>. Configure <code>OPENAI_API_KEY</code> nas variáveis de ambiente do projeto Vercel. A chave nunca deve ser colocada no navegador nem no GitHub.</p><label class="field"><span>Modelo (opcional)</span><input value="Configurado no Vercel: OPENAI_MODEL" disabled></label><div class="callout-note">A assinatura do ChatGPT não inclui créditos da API. O uso da API é faturado separadamente pela OpenAI.</div></section>' +
+      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>OpenAI API</h2></div><span class="service-status configured">Servidor</span></div><p>A geração por IA usa a função segura <code>/api/generate</code>. Configure <code>OPENAI_API_KEY</code>, <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> nas variáveis de ambiente do Vercel. É necessário entrar na conta Supabase; há limite de 20 gerações por dia por conta para evitar abuso e custos inesperados. A chave OpenAI nunca deve ser colocada no navegador nem no GitHub.</p><label class="field"><span>Modelo (opcional)</span><input value="Configurado no Vercel: OPENAI_MODEL" disabled></label><div class="callout-note">A assinatura do ChatGPT não inclui créditos da API. O uso da API é faturado separadamente pela OpenAI.</div></section>' +
       '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">ARMAZENAMENTO</span><h2>Dados deste dispositivo</h2></div></div><p class="muted">Atualmente há <b>' + state.projects.length + '</b> projeto(s) salvos neste navegador.</p><button class="button button-danger-ghost" data-action="clear-local">Apagar dados locais deste navegador</button><p class="small muted">Esta ação não apaga cópias já sincronizadas na nuvem.</p></section></div>';
   }
 
@@ -295,9 +295,15 @@
     if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Preparando..."; }
     notify("Pedindo uma estrutura à IA...", "info");
     try {
-      const response = await fetch("/api/generate", {
+      if (!supabaseClient || !signedInUser) {
+      throw new Error("Conecte o Supabase e entre na sua conta em Configurações antes de usar a IA.");
+    }
+    const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+    const accessToken = sessionData && sessionData.session ? sessionData.session.access_token : null;
+    if (sessionError || !accessToken) throw new Error("Sua sessão expirou. Entre novamente em Configurações.");
+    const response = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
         body: JSON.stringify({ kind: kind, project: project, episode: episode || null })
       });
       const body = await response.json().catch(() => ({}));
