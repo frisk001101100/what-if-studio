@@ -34,6 +34,8 @@ Open the local URL printed by Vercel. The static app can also be previewed with 
 3. Add these Environment Variables in the Vercel project:
    - OPENAI_API_KEY — secret API key, server-side only.
    - OPENAI_MODEL — optional model override; defaults to gpt-5.5.
+   - SUPABASE_URL — the Supabase project URL.
+   - SUPABASE_ANON_KEY — the public anon/publishable key (never use service_role).
 4. Deploy. The generation endpoint is available at /api/generate.
 
 Never add an API key to app.js, index.html, a VITE_ variable, or any committed file. ChatGPT subscriptions and API billing are separate.
@@ -46,6 +48,7 @@ Never add an API key to app.js, index.html, a VITE_ variable, or any committed f
 4. Add your deployed Vercel URL to the allowed redirect URLs.
 5. Open What If Studio → Configurações and enter the Supabase Project URL and public anon/publishable key.
 6. Enter your email and use the link sent to your inbox. Your projects will then sync to your account.
+7. The AI endpoint also requires this Supabase login and the three server environment variables above. The database enforces a limit of 20 AI generations per user per UTC day.
 
 The client uses only the public anon/publishable key. Row Level Security ensures users can access only rows whose user_id matches their authenticated account. Do not use or expose the Supabase service_role key.
 
