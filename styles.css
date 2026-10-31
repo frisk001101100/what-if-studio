@@ -5,6 +5,13 @@
 
 .branch-consequence{display:block;color:#aaa1c9;font-size:10px;line-height:1.5;margin:2px 0 8px;padding-left:1px}
 
+.ai-provider-status{display:flex;align-items:center;gap:9px;padding:13px 14px;margin:16px 0;border:1px solid #302f40;border-radius:11px;background:#11111a;color:#b8b6c8;font-size:11px}
+.ai-provider-status .live-dot{flex:none}
+.provider-key-note{display:grid;gap:5px;padding:13px;border:1px solid #403753;border-radius:10px;background:#1c1928;color:#aaa7bb;font-size:10px;line-height:1.55}
+.provider-key-note b{color:#e7e1fa;font-size:11px}
+.ai-key-access{white-space:nowrap}
+@media(max-width:420px){.ai-key-access{max-width:116px;overflow:hidden;text-overflow:ellipsis}}
+
 
 /* What If Studio — creator-first vertical video workspace */
 .creator-hero{min-height:320px;padding:38px 42px;background:radial-gradient(ellipse at 78% 16%,#644e9888 0,transparent 32%),radial-gradient(ellipse at 5% 100%,#2e557044 0,transparent 36%),linear-gradient(112deg,#211d32 0%,#1c1a2a 56%,#141923 100%)}
