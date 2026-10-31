@@ -8,7 +8,6 @@ Before editing, inspect:
 - `README.md` for setup, deployment, integrations and known limitations.
 - `index.html`, `styles.css` and `app.js` for the current UI and application behavior.
 - `api/generate.js` for the authenticated server-side provider generation flow.
-- `supabase/schema.sql` for authentication, project storage, RLS and AI quota.
 - `vercel.json` and `package.json` for deployment/runtime configuration.
 
 Do not assume this is a blank project. It already contains an MVP. Preserve working features unless the task explicitly asks to change them.
@@ -17,8 +16,8 @@ Do not assume this is a blank project. It already contains an MVP. Preserve work
 - Vanilla HTML, CSS and JavaScript; no frontend framework or build step.
 - `index.html`: app shell and entry point.
 - `styles.css`: responsive dark interface.
-- `app.js`: dashboard, project editor, episodes/scenes, characters, universe, polls, continuity, references, import/export, snapshots, local persistence and optional Supabase sync.
-- `api/generate.js`: Vercel serverless endpoint for OpenAI, Gemini and Claude. Provider keys are supplied per request and are never logged or stored.
+- `app.js`: dashboard, project editor, episodes/scenes, characters, universe, polls, continuity, references, import/export, snapshots and local persistence.
+- `api/generate.js`: Vercel serverless endpoint for OpenAI, Gemini and Claude text generation, plus OpenAI/Gemini scene narration. Provider keys are supplied per request and are never logged or stored.
 - `vercel.json`: Vercel function and security headers.
 
 ## Existing product capabilities
@@ -33,8 +32,8 @@ Do not assume this is a blank project. It already contains an MVP. Preserve work
 - Manual snapshots and restore.
 - Browser local autosave.
 - Individual local-first workspace; no accounts, cloud sync, or database.
-- Optional server-side AI generation for story packs and next episodes with a provider key held in browser memory for the current tab.
-- Browser-side WebM export of short 9:16 motion graphics made from episode scene text and illustrative animated charts. It does not generate image/video footage or audio.
+- Optional server-side AI generation for story packs and next episodes with provider keys held in browser memory for the current tab.
+- Browser-side WebM export of short 9:16 motion graphics made from episode scene text, animated charts, AI voice narration, scene captions and simple synthesized sound.
 
 ## Visual direction
 Keep the existing visual identity coherent:
@@ -48,7 +47,7 @@ Keep the existing visual identity coherent:
 1. Make focused, incremental changes and preserve existing user data formats where possible.
 2. Keep the app usable without an AI provider. AI is optional.
 3. Never put provider API keys or other secrets in committed files, logs or client-visible responses. User-provided provider keys may exist in browser memory only for the current tab and must be sent to `api/generate.js` for one request.
-4. All OpenAI, Gemini and Claude calls must remain server-side in `api/generate.js`; never call a provider API directly from browser code with a key.
+4. All OpenAI, Gemini and Claude calls must remain server-side in `api/generate.js`; never call a provider API directly from browser code with a key. Browser-generated audio/video may use local Web Audio and canvas APIs.
 5. Project data stays in the user's browser storage; preserve JSON import/export so users can back it up.
 6. Validate and safely render user/model-generated content. Continue escaping untrusted values before inserting HTML.
 7. Keep generated story content appropriate for a general/teen audience: no explicit sexual content, graphic violence or self-harm descriptions.
