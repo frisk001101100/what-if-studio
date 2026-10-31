@@ -658,7 +658,7 @@
       const option = poll && poll.options[Number(button.dataset.index)];
       if (poll && option) {
         poll.winner = option.label;
-        project.continuity.push({ id: uid(), type: "Decisão da audiência", text: "A enquete \"" + poll.question + "\" foi vencida por: " + option.label + ". " + (poll.consequence || ""), createdAt: new Date().toISOString() });
+        project.continuity.push({ id: uid(), type: "Decisão da audiência", text: "A enquete \"" + poll.question + "\" foi vencida por: " + option.label + ". " + (option.consequence || "") + " " + (poll.consequence || ""), createdAt: new Date().toISOString() });
         save(); render(); notify("Resultado registrado na continuidade.", "success");
       }
       return;
