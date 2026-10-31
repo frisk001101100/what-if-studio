@@ -36,10 +36,10 @@ export function drawStoryboardFrame(canvas:HTMLCanvasElement,story:Story,seconds
   const bg=ctx.createLinearGradient(0,0,w,h);bg.addColorStop(0,"#123b9a");bg.addColorStop(.55,"#091d4b");bg.addColorStop(1,"#040c20");ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
   const pulse=.5+.5*Math.sin(seconds*1.4);const glow=ctx.createRadialGradient(w*.5,h*.22,10,w*.5,h*.22,w*.7);glow.addColorStop(0,"rgba(133,174,255,.32)");glow.addColorStop(1,"rgba(133,174,255,0)");ctx.fillStyle=glow;ctx.fillRect(0,0,w,h);
   ctx.globalAlpha=.12;ctx.fillStyle="#d5e3ff";for(let x=0;x<w;x+=66)ctx.fillRect(x,0,1,h);ctx.globalAlpha=1;
-  ctx.fillStyle="#d8bd83";ctx.font="500 24px monospace";ctx.letterSpacing="5px";ctx.fillText("WHAT IF STUDIO  /  9:16",72,112);
+  ctx.fillStyle="#d8bd83";ctx.font="500 24px monospace";ctx.fillText("WHAT IF STUDIO  /  9:16",72,112);
   ctx.fillStyle="rgba(205,220,255,.2)";ctx.fillRect(72,154,w-144,2);ctx.fillStyle="#d8bd83";ctx.fillRect(72,154,(w-144)*Math.min(1,seconds/Math.max(total,1)),2);
   ctx.save();ctx.translate(0,Math.max(0,45-local*32));ctx.globalAlpha=Math.min(1,.25+local*.8);
-  ctx.fillStyle="#f8f6f0";ctx.font="400 100px Anton,Impact,sans-serif";ctx.letterSpacing="-1px";
+  ctx.fillStyle="#f8f6f0";ctx.font="400 100px Anton,Impact,sans-serif";
   const headline=String(scene?.onscreen||scene?.title||story.title).toUpperCase();const lines=wrap(ctx,headline,w-150,112);
   let y=h*.37-(lines.length-1)*55;for(const ln of lines.slice(0,4)){ctx.fillText(ln,72,y);y+=112;}
   ctx.restore();
