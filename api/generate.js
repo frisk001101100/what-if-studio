@@ -3,11 +3,10 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST para gerar conteúdo." });
   }
-  const apiKey = process.env.OPENAI_API_KEY;
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-  if (!apiKey || !supabaseUrl || !supabaseAnonKey) {
-    return res.status(503).json({ error: "Configure OPENAI_API_KEY, SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente do Vercel." });
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return res.status(503).json({ error: "Configure SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente do Vercel." });
   }
   try {
     const authorization = req.headers && (req.headers.authorization || req.headers.Authorization);
@@ -27,7 +26,12 @@ export default async function handler(req, res) {
     const kind = body.kind;
     const project = body.project || {};
     const episode = body.episode || null;
+    const provider = String(body.provider || "");
+    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
     if (!["story-pack", "episode"].includes(kind)) return res.status(400).json({ error: "Tipo de geração inválido." });
+    if (!["openai", "gemini", "claude"].includes(provider) || apiKey.length < 10 || apiKey.length > 512) {
+      return res.status(400).json({ error: "Escolha OpenAI, Gemini ou Claude e configure sua chave de API antes de gerar." });
+    }
     const compactProject = {
       title: String(project.title || "").slice(0, 120),
       premise: String(project.premise || "").slice(0, 3000),
@@ -92,11 +96,14 @@ export default async function handler(req, res) {
           "Mantenha a lógica interna consistente. Não apresente ficção como fato. Se o formato for histórico ou documental, marque pontos que precisem de checagem em vez de inventar fatos.",
           "Mantenha conteúdo apropriado para público adolescente e geral: sem conteúdo sexual explícito, sem violência gráfica e sem descrições de automutilação."
         ].join(" ");
-    const openaiResponse = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-5.5",
+    let endpoint;
+    let providerHeaders = { "Content-Type": "application/json" };
+    let providerRequest;
+    if (provider === "openai") {
+      endpoint = "https://api.openai.com/v1/responses";
+      providerHeaders.Authorization = "Bearer " + apiKey;
+      providerRequest = {
+        model: "gpt-6-luna",
         max_output_tokens: 5500,
         store: false,
         text: { format: { type: "json_object" } },
@@ -104,36 +111,64 @@ export default async function handler(req, res) {
           { role: "system", content: system + " Gere JSON que corresponda exatamente aos campos solicitados." },
           { role: "user", content: JSON.stringify(userPayload) }
         ]
-      })
-    });
-    const responseData = await openaiResponse.json().catch(() => ({}));
-    if (!openaiResponse.ok) {
-      const message = responseData && responseData.error && responseData.error.message ? responseData.error.message : "A API de IA retornou um erro.";
-      console.error("OpenAI API error:", openaiResponse.status, message);
-      return res.status(openaiResponse.status === 429 ? 429 : 502).json({
-        error: openaiResponse.status === 429
-          ? "Limite ou crédito da API atingido. Verifique o faturamento e os limites da sua conta OpenAI."
-          : "A geração falhou. Verifique OPENAI_MODEL e o acesso da chave à API."
-      });
+      };
+    } else if (provider === "gemini") {
+      endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+      providerHeaders["x-goog-api-key"] = apiKey;
+      providerRequest = {
+        systemInstruction: { parts: [{ text: system + " Gere JSON que corresponda exatamente aos campos solicitados." }] },
+        contents: [{ role: "user", parts: [{ text: JSON.stringify(userPayload) }] }],
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 5500 },
+        store: false
+      };
+    } else {
+      endpoint = "https://api.anthropic.com/v1/messages";
+      providerHeaders["x-api-key"] = apiKey;
+      providerHeaders["anthropic-version"] = "2026-10-21";
+      providerRequest = {
+        model: "claude-haiku-5-5",
+        max_tokens: 5500,
+        system: system + " Gere JSON que corresponda exatamente aos campos solicitados.",
+        messages: [{ role: "user", content: JSON.stringify(userPayload) }]
+      };
     }
-    const outputText = Array.isArray(responseData.output)
-      ? responseData.output.flatMap((item) => Array.isArray(item.content) ? item.content : [])
-          .filter((item) => item.type === "output_text")
-          .map((item) => item.text || "")
-          .join("\n")
-      : "";
-    const raw = outputText || responseData.output_text || "";
+    const providerResponse = await fetch(endpoint, {
+      method: "POST",
+      headers: providerHeaders,
+      body: JSON.stringify(providerRequest)
+    });
+    const responseData = await providerResponse.json().catch(() => ({}));
+    if (!providerResponse.ok) {
+      console.error("AI provider request failed:", provider, providerResponse.status);
+      if (providerResponse.status === 401 || providerResponse.status === 403) {
+        return res.status(401).json({ error: "A chave informada não foi aceita. Confira a chave e a conta do provedor escolhido." });
+      }
+      if (providerResponse.status === 429) {
+        return res.status(429).json({ error: "O provedor atingiu um limite de uso ou crédito. Confira a conta e tente novamente mais tarde." });
+      }
+      return res.status(502).json({ error: "A geração falhou no provedor escolhido. Confira o acesso à API e tente novamente." });
+    }
+    const raw = provider === "openai"
+      ? (Array.isArray(responseData.output)
+          ? responseData.output.flatMap((item) => Array.isArray(item.content) ? item.content : [])
+              .filter((item) => item.type === "output_text")
+              .map((item) => item.text || "")
+              .join("\n")
+          : responseData.output_text || "")
+      : provider === "gemini"
+        ? (responseData.candidates || []).flatMap((candidate) => candidate.content && Array.isArray(candidate.content.parts) ? candidate.content.parts : []).map((part) => part.text || "").join("\n")
+        : (responseData.content || []).filter((item) => item.type === "text").map((item) => item.text || "").join("\n");
     if (!raw) return res.status(502).json({ error: "A IA não retornou conteúdo. Tente novamente." });
     let parsed;
     try { parsed = JSON.parse(raw); }
     catch (parseError) {
-      console.error("Could not parse model JSON:", parseError);
+      console.error("Could not parse AI provider JSON response.");
       return res.status(502).json({ error: "A resposta da IA veio em formato inválido. Tente novamente." });
     }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return res.status(502).json({ error: "A resposta da IA não tinha a estrutura esperada." });
     return res.status(200).json(parsed);
   } catch (error) {
-    console.error("Generation function failed:", error);
+    console.error("Generation function failed.");
     return res.status(500).json({ error: "Erro interno ao gerar conteúdo. Tente novamente." });
   }
 }
