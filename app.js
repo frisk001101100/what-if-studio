@@ -37,7 +37,12 @@
     };
     try {
       const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      return { ...defaults, ...(saved && typeof saved === "object" ? saved : {}) };
+      const configured = saved && typeof saved === "object" ? saved : {};
+      return {
+        ...configured,
+        supabaseUrl: configured.supabaseUrl || defaults.supabaseUrl,
+        supabaseAnon: configured.supabaseAnon || defaults.supabaseAnon
+      };
     } catch (_) { return defaults; }
   }
 
