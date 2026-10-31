@@ -175,7 +175,7 @@
       ["overview", "Visão geral"], ["episodes", "Episódios"], ["characters", "Personagens"],
       ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["sources", "Fontes"], ["export", "Exportar"]
     ];
-    return '<div class="page-stack editor-stack"><div class="editor-topline"><button class="text-button" data-action="navigate" data-view="projects">← Projetos</button><span class="project-tag">' + escapeHtml(project.format) + '</span><span class="status-pill">' + escapeHtml(project.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-project">✦ Desenvolver com IA</button></div>' +
+    return '<div class="page-stack editor-stack"><div class="editor-topline"><button class="text-button" data-action="navigate" data-view="projects">← Projetos</button><span class="project-tag">' + escapeHtml(project.format) + '</span><span class="status-pill">' + escapeHtml(project.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-project">✦ Desenvolver com IA</button><button class="button button-danger-ghost button-small" data-action="delete-project">Excluir projeto</button></div>' +
       '<div class="editor-heading"><div><h1>' + escapeHtml(project.title) + '</h1><p>' + escapeHtml(project.premise || "Uma história em construção.") + '</p></div><div class="editor-metrics"><span><b>' + project.episodes.length + '</b> episódios</span><span><b>' + project.characters.length + '</b> personagens</span><span><b>' + project.polls.length + '</b> enquetes</span></div></div>' +
       '<nav class="tabs">' + tabs.map((tab) => '<button class="tab-button ' + (activeTab === tab[0] ? "active" : "") + '" data-action="switch-tab" data-tab="' + tab[0] + '">' + tab[1] + '</button>').join("") + '</nav>' +
       '<div class="tab-content">' + renderTab(project) + '</div></div>';
@@ -275,7 +275,7 @@
   }
 
   function renderExport(project) {
-    return '<div class="two-column"><section class="panel"><span class="eyebrow">SEU MATERIAL, SEU FORMATO</span><h2>Exportar projeto</h2><p class="muted">Baixe uma cópia do projeto para guardar, revisar ou levar para outra ferramenta.</p><div class="export-options"><button class="export-option" data-action="export" data-format="json"><span class="export-icon">{ }</span><span><b>JSON completo</b><small>Todos os dados e a estrutura do projeto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="markdown"><span class="export-icon">M↓</span><span><b>Markdown</b><small>Documento legível com episódios, personagens e enquetes.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="txt"><span class="export-icon">TXT</span><span><b>Texto simples</b><small>Roteiros e informações em texto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="srt"><span class="export-icon">CC</span><span><b>Legendas SRT</b><small>Gera legendas a partir das falas e narrações das cenas.</small></span><span>↓</span></button></div></section><aside class="panel panel-soft"><span class="eyebrow">BACKUP</span><h3>Seus dados ficam com você.</h3><p>O salvamento local mantém o projeto neste navegador. Ative a sincronização nas configurações para guardar uma cópia na sua conta Supabase.</p><button class="button button-secondary button-wide" data-action="navigate" data-view="settings">Configurar sincronização →</button></aside></div>';
+    return '<div class="two-column"><section class="panel"><span class="eyebrow">SEU MATERIAL, SEU FORMATO</span><h2>Exportar projeto</h2><p class="muted">Baixe uma cópia do projeto para guardar, revisar ou levar para outra ferramenta.</p><div class="export-options"><button class="export-option" data-action="import-json"><span class="export-icon">↑</span><span><b>Importar backup JSON</b><small>Recupere um projeto exportado anteriormente.</small></span><span>↑</span></button><input type="file" accept="application/json,.json" data-import-file hidden><button class="export-option" data-action="export" data-format="json"><span class="export-icon">{ }</span><span><b>JSON completo</b><small>Todos os dados e a estrutura do projeto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="markdown"><span class="export-icon">M↓</span><span><b>Markdown</b><small>Documento legível com episódios, personagens e enquetes.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="txt"><span class="export-icon">TXT</span><span><b>Texto simples</b><small>Roteiros e informações em texto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="srt"><span class="export-icon">CC</span><span><b>Legendas SRT</b><small>Gera legendas a partir das falas e narrações das cenas.</small></span><span>↓</span></button></div></section><aside class="panel panel-soft"><span class="eyebrow">BACKUP</span><h3>Seus dados ficam com você.</h3><p>O salvamento local mantém o projeto neste navegador. Ative a sincronização nas configurações para guardar uma cópia na sua conta Supabase.</p><button class="button button-secondary button-wide" data-action="navigate" data-view="settings">Configurar sincronização →</button></aside></div>';
   }
 
   function renderSettings() {
@@ -624,6 +624,25 @@
       }
       return;
     }
+    if (action === "delete-project" && project) {
+      if (!window.confirm("Excluir este projeto? A cópia local será removida e, se houver conexão, a cópia na nuvem também será excluída.")) return;
+      const projectId = project.id;
+      let cloudDeleteError = null;
+      if (supabaseClient && signedInUser) {
+        const { error } = await supabaseClient.from("projects").delete().eq("id", projectId).eq("user_id", signedInUser.id);
+        cloudDeleteError = error;
+      }
+      state.projects = state.projects.filter((item) => item.id !== projectId);
+      state.activeProjectId = null;
+      activeView = "projects";
+      activeEpisodeId = null;
+      save(false);
+      render();
+      if (cloudDeleteError) notify("Projeto removido deste dispositivo, mas a cópia na nuvem não foi apagada: " + cloudDeleteError.message, "error");
+      else notify("Projeto excluído.", "success");
+      return;
+    }
+    if (action === "import-json") { const input = $('[data-import-file]'); if (input) input.click(); return; }
     if (action === "export") return exportProject(button.dataset.format);
     if (action === "cloud-sync") return syncCloud(true);
     if (action === "cloud-signout" && supabaseClient) {
@@ -662,8 +681,44 @@
     }
   });
 
-  document.addEventListener("change", (event) => {
+  document.addEventListener("change", async (event) => {
     const target = event.target;
+    if (target.dataset.importFile !== undefined && target.files && target.files[0]) {
+      const file = target.files[0];
+      if (file.size > 2 * 1024 * 1024) { notify("O arquivo precisa ter até 2 MB.", "error"); target.value = ""; return; }
+      try {
+        const imported = JSON.parse(await file.text());
+        if (!imported || typeof imported !== "object" || Array.isArray(imported) || !imported.title || !Array.isArray(imported.episodes)) {
+          throw new Error("Este arquivo não parece ser um backup de projeto What If Studio.");
+        }
+        imported.id = uid();
+        imported.createdAt = new Date().toISOString();
+        imported.updatedAt = new Date().toISOString();
+        imported.world = imported.world && typeof imported.world === "object" ? imported.world : { setting: "", rules: [], visualStyle: "" };
+        imported.world.rules = Array.isArray(imported.world.rules) ? imported.world.rules : [];
+        imported.characters = Array.isArray(imported.characters) ? imported.characters.map((item) => ({ ...item, id: uid() })) : [];
+        imported.episodes = imported.episodes.map((item, index) => ({
+          ...item, id: uid(), number: index + 1,
+          scenes: Array.isArray(item.scenes) ? item.scenes.map((scene) => ({ ...scene, id: uid() })) : []
+        }));
+        imported.polls = Array.isArray(imported.polls) ? imported.polls.map((item) => ({ ...item, id: uid() })) : [];
+        imported.continuity = Array.isArray(imported.continuity) ? imported.continuity.map((item) => ({ ...item, id: uid() })) : [];
+        imported.sources = Array.isArray(imported.sources) ? imported.sources.map((item) => ({ ...item, id: uid() })) : [];
+        state.projects.unshift(imported);
+        state.activeProjectId = imported.id;
+        activeView = "editor";
+        activeTab = "overview";
+        activeEpisodeId = null;
+        save();
+        render();
+        notify("Backup importado como um novo projeto.", "success");
+      } catch (error) {
+        notify(error.message || "Não foi possível importar o arquivo.", "error");
+      } finally {
+        target.value = "";
+      }
+      return;
+    }
     if (target.dataset.bind && target.tagName === "SELECT") {
       const project = currentProject();
       if (project) { setPath(project, target.dataset.bind, target.value); project.updatedAt = new Date().toISOString(); save(); }
