@@ -349,6 +349,9 @@
         episode.title = body.title || episode.title;
         episode.summary = body.summary || episode.summary;
         episode.script = body.script || episode.script;
+        episode.caption = body.caption || episode.caption || "";
+        episode.pinnedComment = body.pinnedComment || episode.pinnedComment || "";
+        episode.storyPoll = body.storyPoll || episode.storyPoll || "";
         episode.scenes = Array.isArray(body.scenes) ? body.scenes.map((scene) => ({
           id: uid(), title: scene.title || "Nova cena", visual: scene.visual || "",
           audio: scene.audio || "", audioDirection: scene.audioDirection || "", imagePrompt: scene.imagePrompt || "", videoPrompt: scene.videoPrompt || "", onScreen: scene.onScreen || "",
