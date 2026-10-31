@@ -1,40 +1,14 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101018">
-  <meta name="description" content="What If Studio — planeje vídeos verticais e séries interativas que evoluem com o público.">
-  <title>What If Studio</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="/app.js" defer></script>
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="/" aria-label="What If Studio início"><span class="brand-mark">W<span>?</span></span><span class="brand-name">what if<span>studio</span></span></a>
-      <div class="workspace-label">WORKSPACE</div>
-      <nav class="main-nav">
-        <button class="nav-item active" data-action="navigate" data-view="dashboard" data-nav="dashboard"><span class="nav-icon">⌂</span> Visão geral</button>
-        <button class="nav-item" data-action="navigate" data-view="projects" data-nav="projects"><span class="nav-icon">▧</span> Projetos</button>
-        <button class="nav-item" data-action="navigate" data-view="settings" data-nav="settings"><span class="nav-icon">⚙</span> Configurações</button>
-      </nav>
-      <div class="sidebar-bottom">
-        <div class="sidebar-note"><span class="note-star">✦</span><b>Uma escolha muda tudo.</b><p>Crie caminhos diferentes. Mantenha a história coerente.</p></div>
-        <div class="account-row"><span class="account-avatar">W</span><span><b>Workspace pessoal</b><small id="save-status">Salvo neste dispositivo</small></span></div>
-      </div>
-    </aside>
-    <main class="main-content">
-      <header class="topbar"><div><span class="topbar-kicker">WHAT IF STUDIO</span><h1 id="page-title">Visão geral</h1></div><div class="topbar-actions"><span class="autosave-indicator"><i></i><span>Auto-save</span></span><button class="button button-secondary button-small ai-key-access" data-action="configure-ai">Configurar IA</button><button class="button button-primary button-small" data-action="new-project">＋ Novo projeto</button></div></header>
-      <section id="app" class="app-content" aria-live="polite"></section>
-      <footer class="app-footer"><span>WHAT IF STUDIO</span><span>Crie. Publique. Deixe o público decidir.</span><span>v0.2.0 · CREATOR STUDIO</span></footer>
-    </main>
-  </div>
-  <div id="modal-root"></div>
-  <div id="toast-root" aria-live="polite"></div>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07142f" />
+    <meta name="description" content="What If Studio — transforme ideias em vídeos curtos com histórias, motion design e IA." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>What If Studio — Make the impossible watchable</title>
+  </head>
+  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
 </html>
