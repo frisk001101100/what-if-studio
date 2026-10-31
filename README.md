@@ -1,78 +1,26 @@
 # What If Studio
 
-A local-first studio for creating short-form interactive stories where audience choices meaningfully change what happens next.
+Workspace individual para criar séries curtas e histórias interativas em português.
 
-## Current MVP
+## Recursos
 
-- Responsive dark workspace with dashboard and project library.
-- Create and edit story projects, premises, formats, platforms, tone and duration.
-- Episode list, script editor, scene breakdown, image/video prompts, audio direction and production notes.
-- Publishing copy per episode: post caption, pinned comment and a Stories poll draft.
-- Character sheets with role, motivation, appearance and voice.
-- Universe setting, rules and visual direction.
-- Audience polls with multiple options, manual vote counting and narrative consequences.
-- Continuity log for established facts, audience decisions, secrets and consequences.
-- Source/reference tracker with verification status and link per claim.
-- Export project as JSON, Markdown, TXT or SRT, and import JSON backups as separate projects.
-- Manual version snapshots with restore and a maximum of 20 saved checkpoints per project.
-- Per-option poll consequences that are copied into continuity when the winning branch is selected.
-- Generate the next episode using the poll result and the established continuity as context.
-- Automatic local saving in the current browser.
-- A configurable Course What If sales page with a WhatsApp inquiry button; course payments are arranged and confirmed by the owner over WhatsApp/Pix.
-- A publishing workspace for episode scripts, captions, a local schedule queue capped at four planned posts per day, and copy-to-clipboard actions.
-- Paste one Instagram comment per line into a poll to count A/B or unambiguous option votes. The winning branch is added to story continuity so the next AI script can follow it. Original comments are not stored.
-- Optional Supabase magic-link login and cloud sync.
-- Optional AI generation with an OpenAI, Gemini or Claude API key entered in the app.
+- Projetos, episódios, roteiros e cenas verticais.
+- Personagens, regras do universo, enquetes e continuidade.
+- Calendário editorial, pacote de publicação e área do Curso What If.
+- Exportação JSON, Markdown e texto; importação de backup JSON.
+- Salvamento automático neste navegador.
+- Renderização local de gráficos animados 9:16 em WebM.
+- Geração opcional de roteiros com OpenAI, Gemini ou Claude. A chave informada fica na memória da aba e é enviada ao endpoint server-side para uma chamada. O provedor pode cobrar o uso da API.
 
-The app works locally without OpenAI or Supabase. Those services are optional integrations and need your own accounts and configuration.
+## Executar e publicar
 
-## Run locally
+O app usa HTML, CSS e JavaScript sem etapa de compilação. Para desenvolver, instale o Vercel CLI e execute `vercel dev`; para publicar, conecte o repositório à Vercel.
 
-Requirements: Node.js 20+ and the Vercel CLI.
+A geração de IA usa `/api/generate`. Não é necessário banco nem conta para usar o estúdio. Os projetos ficam no armazenamento local do navegador deste aparelho. Exporte backups JSON regularmente; apagar os dados do navegador pode remover projetos. Não há sincronização entre aparelhos.
 
-    npm install
-    npx vercel dev
+## Privacidade e limites
 
-Open the local URL printed by Vercel. The static app can also be previewed with any static server, but the /api/generate endpoint requires the Vercel development server.
+Este modo é individual em termos de uso, mas uma URL pública da Vercel continua acessível a qualquer pessoa que a encontre. Os dados ficam no navegador de quem os criou. A chave de IA não é salva no projeto, mas a solicitação envia ao provedor escolhido o conteúdo necessário para gerar o roteiro.
 
-## Deploy to Vercel
+O app não publica automaticamente no Instagram, não importa comentários/visualizações e não escolhe resultados de votação a partir de métricas. Enquetes e calendário são ferramentas de planejamento manual.
 
-1. Import frisk001101100/what-if-studio from GitHub into Vercel.
-2. Choose Other as the framework preset. No build command is required; the app is served from the repository root.
-3. Add these Environment Variables in the Vercel project:
-   - SUPABASE_URL — the Supabase project URL.
-   - SUPABASE_ANON_KEY — the public anon/publishable key (never use service_role).
-4. Deploy. The generation endpoint is available at /api/generate.
-
-Never add an API key to app.js, index.html, a VITE_ variable, or any committed file. Users configure their own provider key in the app before generating. The key stays in memory for the current browser tab, is sent to the server only for a generation request, and is never saved to project data, Supabase, or browser storage. Each provider bills API usage separately from its chat subscription.
-
-## Configure Supabase cloud sync
-
-1. Create a Supabase project.
-2. In the Supabase SQL Editor, run supabase/schema.sql.
-3. In Supabase Authentication settings, enable email OTP / magic links.
-4. Add your deployed Vercel URL to the allowed redirect URLs.
-5. Open What If Studio → Configurações and enter the Supabase Project URL and public anon/publishable key.
-6. Enter your email and use the link sent to your inbox. Your projects will then sync to your account.
-7. To generate content, choose OpenAI, Gemini, or Claude from the app's **Configurar IA** button and enter an API key from that provider. Sign in to Supabase as well; the database enforces a limit of 20 AI generations per user per UTC day.
-
-The client uses only the public anon/publishable key. Row Level Security ensures users can access only rows whose user_id matches their authenticated account. Do not use or expose the Supabase service_role key.
-
-## Architecture
-
-- index.html, styles.css, app.js: static browser application.
-- api/generate.js: authenticated server-side proxy for OpenAI, Gemini and Claude. A user-provided API key is used for one request and is never logged or stored.
-- supabase/schema.sql: projects table and row-level security policies.
-- vercel.json: Vercel function and security-header configuration.
-
-## Limitations in this MVP
-
-- Poll votes are entered manually. The app does not scrape social platforms or claim to read Instagram/TikTok poll results.
-- Cloud sync is optional and requires Supabase configuration.
-- AI generation is optional and requires an API key and billing with the selected provider, plus Supabase login for the daily quota.
-- The schedule queue is local planning only. There is no automatic Instagram login, video rendering, Reel publishing, insights polling, comment import, or threshold-triggered episode release yet. Instagram automation needs a Meta developer app, a Professional account, approved publishing/insights/comment permissions, secure token storage and a video file hosted for Meta to fetch. Meta's official Instagram API requires an app and user access token; its publishing flow uploads a Reel container from a publicly reachable video URL before publishing: [Meta Instagram API workspace](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
-- Local data is stored in the current browser until cloud sync is configured. Export backups regularly.
-
-## Safety and privacy
-
-Keep API secrets out of source code and project backups. The app keeps the selected AI key in page memory only and clears it when the tab is closed. Do not commit .env files, service-role keys, private access tokens or personal data. Use platform-approved integrations for publishing and audience data.
