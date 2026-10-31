@@ -260,7 +260,7 @@
         const options = poll.options || [];
         const total = options.reduce((sum, option) => sum + Number(option.votes || 0), 0);
         const max = Math.max(1, ...options.map((option) => Number(option.votes || 0)));
-        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div><div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
+        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div>' + (option.consequence ? '<small class="branch-consequence">Se vencer: ' + escapeHtml(option.consequence) + '</small>' : '') + '<div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
       }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">◉</div><h3>Deixe o público decidir</h3><p>Uma boa enquete cria uma escolha clara e faz cada alternativa produzir um caminho diferente.</p><button class="button button-primary" data-action="add-poll">Criar enquete</button></div>');
   }
 
@@ -320,7 +320,7 @@
 
   function showPollModal() {
     openModal('<div class="modal-top"><div><span class="eyebrow">PARTICIPAÇÃO</span><h2>Criar enquete</h2><p>Faça a pergunta e dê caminhos que realmente mudem a história.</p></div><button class="icon-button" data-action="close-modal">×</button></div><form data-form="add-poll" class="form-grid">' +
-      '<label class="field full"><span>Pergunta</span><input name="question" required maxlength="180" placeholder="O que a personagem deve fazer?"></label><label class="field full"><span>Opções (uma por linha)</span><textarea name="options" required placeholder="Confiar no desconhecido&#10;Voltar para casa"></textarea></label><label class="field full"><span>Consequência narrativa</span><textarea name="consequence" placeholder="Como cada escolha muda o próximo episódio?"></textarea></label><div class="modal-actions"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Criar enquete</button></div></form>');
+      '<label class="field full"><span>Pergunta</span><input name="question" required maxlength="180" placeholder="O que a personagem deve fazer?"></label><label class="field full"><span>Opções (uma por linha)</span><textarea name="options" required placeholder="Confiar no desconhecido | Revela o segredo&#10;Voltar para casa | Perde a pista principal"></textarea></label><label class="field full"><span>Consequência narrativa</span><textarea name="consequence" placeholder="Como cada escolha muda o próximo episódio?"></textarea></label><div class="modal-actions"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Criar enquete</button></div></form>');
   }
 
   function showContinuityModal() {
@@ -405,7 +405,7 @@
         if (Array.isArray(body.polls)) {
           const generatedPolls = body.polls.map((poll) => ({
             id: uid(), question: poll.question || "Escolha o próximo passo",
-            options: (poll.options || []).map((option) => ({ label: typeof option === "string" ? option : option.label || "Opção", votes: 0 })),
+            options: (poll.options || []).map((option) => ({ label: typeof option === "string" ? option : option.label || "Opção", consequence: typeof option === "string" ? "" : option.consequence || "", votes: 0 })),
             winner: "", consequence: poll.consequence || ""
           }));
           project.polls.push(...generatedPolls);
@@ -548,7 +548,7 @@
         lines.push("## Episódio " + episode.number + " — " + episode.title, episode.summary, "", episode.script, "", "Legenda: " + (episode.caption || ""), "Comentário fixado: " + (episode.pinnedComment || ""), "Enquete para Stories: " + (episode.storyPoll || ""), "");
         (episode.scenes || []).forEach((scene, index) => lines.push("### Cena " + (index + 1) + " — " + scene.title, "Visual: " + (scene.visual || ""), "Prompt de imagem: " + (scene.imagePrompt || ""), "Prompt de vídeo: " + (scene.videoPrompt || ""), "Áudio: " + (scene.audio || ""), "Direção de áudio: " + (scene.audioDirection || ""), "Texto na tela: " + (scene.onScreen || ""), "Duração: " + (scene.duration || 0) + "s", "Som: " + (scene.sfx || ""), ""));
       });
-      project.polls.forEach((poll) => lines.push("## Enquete", poll.question, ...(poll.options || []).map((option) => "- " + option.label + " (" + option.votes + " votos)"), "Consequência: " + poll.consequence, ""));
+      project.polls.forEach((poll) => lines.push("## Enquete", poll.question, ...(poll.options || []).map((option) => "- " + option.label + " (" + option.votes + " votos)" + (option.consequence ? " — Se vencer: " + option.consequence : "")), "Consequência: " + poll.consequence, ""));
       project.continuity.forEach((entry) => lines.push("## Continuidade — " + entry.type, entry.text, ""));
       (project.sources || []).forEach((source) => lines.push("## Fonte — " + source.title, source.claim, "URL: " + source.url, "Estado: " + source.status, ""));
       return downloadFile(filename + (format === "txt" ? ".txt" : ".md"), lines.join("\n"), "text/plain;charset=utf-8");
@@ -798,7 +798,7 @@
     if (type === "add-poll" && project) {
       const options = data.options.split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 6);
       if (options.length < 2) { notify("Adicione pelo menos duas opções.", "error"); return; }
-      project.polls.push({ id: uid(), question: data.question, options: options.map((label) => ({ label: label, votes: 0 })), winner: "", consequence: data.consequence || "" });
+      project.polls.push({ id: uid(), question: data.question, options: options.map((line) => { const parts = line.split("|"); return { label: (parts.shift() || "").trim(), consequence: parts.join("|").trim(), votes: 0 }; }), winner: "", consequence: data.consequence || "" });
       save(); closeModal(); render(); notify("Enquete criada.", "success"); return;
     }
     if (type === "add-continuity" && project) {
