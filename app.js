@@ -12,11 +12,16 @@
     try { return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }); }
     catch (_) { return "agora"; }
   };
+  const formatTimecode = (seconds) => {
+    const total = Math.floor(Math.max(0, Number(seconds) || 0));
+    return String(Math.floor(total / 60)).padStart(2, "0") + ':' + String(total % 60).padStart(2, "0");
+  };
   const defaultState = () => ({ projects: [], activeProjectId: null });
   let state = loadState();
   let activeView = "dashboard";
   let activeTab = "overview";
   let activeEpisodeId = null;
+  let activeSceneId = null;
   let supabaseClient = null;
   let signedInUser = null;
   let cloudSyncTimer = null;
@@ -123,6 +128,7 @@
     activeView = "editor";
     activeTab = "overview";
     activeEpisodeId = null;
+    activeSceneId = null;
     save();
     render();
     notify("Projeto criado. Agora desenvolva o universo.", "success");
@@ -133,6 +139,7 @@
     activeView = "editor";
     activeTab = "overview";
     activeEpisodeId = null;
+    activeSceneId = null;
     save(false);
     render();
   }
@@ -248,19 +255,29 @@
 
     const scenes = Array.isArray(episode.scenes) ? episode.scenes : [];
     const totalSeconds = scenes.reduce((sum, scene) => sum + Math.max(1, Number(scene.duration) || 8), 0);
-    const activeScene = scenes[0] || {};
+    const activeScene = scenes.find((scene) => scene.id === activeSceneId) || scenes[0] || {};
     const previewHeadline = activeScene.onScreen || episode.title || "Sua próxima história começa aqui.";
     const previewVisual = activeScene.visual || episode.summary || "Adicione a descrição visual da primeira cena.";
     const previewAudio = activeScene.audio || "Narração e diálogo aparecem aqui.";
-    const timeline = scenes.length ? '<div class="storyboard-strip">' + scenes.map((scene, index) => '<div class="storyboard-frame"><div class="storyboard-thumb"><span>' + String(index + 1).padStart(2, "0") + '</span><i>▶</i><small>' + escapeHtml(scene.duration || 8) + 's</small></div><b>' + escapeHtml(scene.title || "Cena " + (index + 1)) + '</b><small>' + escapeHtml(scene.onScreen || scene.visual || "Sem descrição visual") + '</small></div>').join("") + '</div>' : '<div class="storyboard-empty">Adicione cenas para montar a sequência visual do episódio.</div>';
-    const sceneCards = scenes.length ? '<div class="scene-grid scene-grid-editor">' + scenes.map((scene, index) => '<article class="scene-card scene-card-pro"><div class="scene-card-top"><span class="scene-index">CENA ' + String(index + 1).padStart(2, "0") + '</span><span class="scene-timecode">' + String(index * 8).padStart(2, "0") + ':00</span><button class="icon-button danger-text" data-action="delete-scene" data-id="' + escapeHtml(scene.id) + '" title="Excluir cena">×</button></div><div class="scene-shot-placeholder"><span>SHOT ' + String(index + 1).padStart(2, "0") + '</span><b>' + escapeHtml(scene.title || "Plano sem título") + '</b></div><label class="field"><span>Nome da cena</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="title" value="' + escapeHtml(scene.title || "") + '" placeholder="Ex.: O corredor vazio"></label><label class="field"><span>Visual / câmera</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="visual" placeholder="O que aparece?">' + escapeHtml(scene.visual || "") + '</textarea></label><label class="field"><span>Prompt de imagem</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="imagePrompt" placeholder="Descrição visual para gerar uma imagem...">' + escapeHtml(scene.imagePrompt || "") + '</textarea></label><label class="field"><span>Direção de vídeo / câmera</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="videoPrompt" placeholder="Movimento, enquadramento, transição...">' + escapeHtml(scene.videoPrompt || "") + '</textarea></label><label class="field"><span>Narração / diálogo</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="audio" placeholder="O que é dito ou ouvido?">' + escapeHtml(scene.audio || "") + '</textarea></label><label class="field"><span>Direção de áudio</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="audioDirection" placeholder="Interpretação, ritmo, intensidade...">' + escapeHtml(scene.audioDirection || "") + '</textarea></label><label class="field"><span>Texto na tela</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="onScreen" value="' + escapeHtml(scene.onScreen || "") + '" placeholder="Frase de abertura ou legenda"></label><div class="scene-meta"><label class="field"><span>Duração (s)</span><input type="number" min="1" max="300" data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="duration" value="' + escapeHtml(scene.duration || 8) + '"></label><label class="field"><span>Som / trilha</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="sfx" value="' + escapeHtml(scene.sfx || "") + '" placeholder="Ambiente, efeito..."></label></div></article>').join("") + '</div>' : '<div class="empty-inline"><p>Nenhuma cena detalhada ainda.</p><button class="button button-secondary button-small" data-action="add-scene">Adicionar primeira cena</button></div>';
+    let elapsedSeconds = 0;
+    const timeline = scenes.length ? '<div class="storyboard-strip">' + scenes.map((scene, index) => {
+      const startAt = elapsedSeconds;
+      elapsedSeconds += Math.max(1, Number(scene.duration) || 8);
+      return '<button class="storyboard-frame ' + (scene.id === activeScene.id ? "active" : "") + '" data-action="select-scene" data-id="' + escapeHtml(scene.id) + '" aria-pressed="' + (scene.id === activeScene.id) + '"><span class="storyboard-thumb"><span>' + String(index + 1).padStart(2, "0") + '</span><i>▶</i><small data-storyboard-duration="' + escapeHtml(scene.id) + '">' + escapeHtml(scene.duration || 8) + 's</small></span><b data-storyboard-title="' + escapeHtml(scene.id) + '">' + escapeHtml(scene.title || "Cena " + (index + 1)) + '</b><small data-storyboard-caption="' + escapeHtml(scene.id) + '">' + escapeHtml(scene.onScreen || scene.visual || "Sem descrição visual") + '</small><span class="storyboard-timecode" data-storyboard-timecode="' + escapeHtml(scene.id) + '">' + formatTimecode(startAt) + '</span></button>';
+    }).join("") + '</div>' : '<div class="storyboard-empty">Adicione cenas para montar a sequência visual do episódio.</div>';
+    elapsedSeconds = 0;
+    const sceneCards = scenes.length ? '<div class="scene-grid scene-grid-editor">' + scenes.map((scene, index) => {
+      const startAt = elapsedSeconds;
+      elapsedSeconds += Math.max(1, Number(scene.duration) || 8);
+      return '<article class="scene-card scene-card-pro ' + (scene.id === activeScene.id ? "active" : "") + '"><div class="scene-card-top"><span class="scene-index">CENA ' + String(index + 1).padStart(2, "0") + '</span><span class="scene-timecode" data-scene-timecode="' + escapeHtml(scene.id) + '">' + formatTimecode(startAt) + '</span><button class="icon-button danger-text" data-action="delete-scene" data-id="' + escapeHtml(scene.id) + '" title="Excluir cena">×</button></div><div class="scene-shot-placeholder"><span>SHOT ' + String(index + 1).padStart(2, "0") + '</span><b data-scene-title="' + escapeHtml(scene.id) + '">' + escapeHtml(scene.title || "Plano sem título") + '</b></div><label class="field"><span>Nome da cena</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="title" value="' + escapeHtml(scene.title || "") + '" placeholder="Ex.: O corredor vazio"></label><label class="field"><span>Visual / câmera</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="visual" placeholder="O que aparece?">' + escapeHtml(scene.visual || "") + '</textarea></label><label class="field"><span>Prompt de imagem</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="imagePrompt" placeholder="Descrição visual para gerar uma imagem...">' + escapeHtml(scene.imagePrompt || "") + '</textarea></label><label class="field"><span>Direção de vídeo / câmera</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="videoPrompt" placeholder="Movimento, enquadramento, transição...">' + escapeHtml(scene.videoPrompt || "") + '</textarea></label><label class="field"><span>Narração / diálogo</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="audio" placeholder="O que é dito ou ouvido?">' + escapeHtml(scene.audio || "") + '</textarea></label><label class="field"><span>Direção de áudio</span><textarea data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="audioDirection" placeholder="Interpretação, ritmo, intensidade...">' + escapeHtml(scene.audioDirection || "") + '</textarea></label><label class="field"><span>Texto na tela</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="onScreen" value="' + escapeHtml(scene.onScreen || "") + '" placeholder="Frase de abertura ou legenda"></label><div class="scene-meta"><label class="field"><span>Duração (s)</span><input type="number" min="1" max="300" data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="duration" value="' + escapeHtml(scene.duration || 8) + '"></label><label class="field"><span>Som / trilha</span><input data-scene-id="' + escapeHtml(scene.id) + '" data-scene-field="sfx" value="' + escapeHtml(scene.sfx || "") + '" placeholder="Ambiente, efeito..."></label></div></article>';
+    }).join("") + '</div>' : '<div class="empty-inline"><p>Nenhuma cena detalhada ainda.</p><button class="button button-secondary button-small" data-action="add-scene">Adicionar primeira cena</button></div>';
 
     return '<div class="page-stack video-editor-page"><div class="video-editor-topline"><button class="text-button" data-action="back-episodes">← Todos os vídeos</button><span class="project-tag">EPISÓDIO ' + String(episode.number).padStart(2, "0") + '</span><span class="status-pill">' + escapeHtml(episode.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-episode">✦ Gerar roteiro com IA</button></div>' +
       '<div class="video-editor-heading"><div><span class="eyebrow">EDITOR DE VÍDEO VERTICAL</span><h2>' + escapeHtml(episode.title) + '</h2><p>' + escapeHtml(episode.summary || "Defina a premissa visual e narrativa deste vídeo.") + '</p></div><div class="video-editor-specs"><span>9:16</span><span>' + scenes.length + ' cenas</span><span>' + totalSeconds + 's estimados</span></div></div>' +
-      '<div class="video-editor-layout"><div class="video-editor-main"><section class="panel video-preview-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR DE PRÉVIA</span><h2>Composição vertical</h2></div><div class="preview-mode-chip"><i></i> STORYBOARD</div></div><div class="video-preview-stage"><div class="reel-preview"><div class="reel-preview-top"><span>WHAT IF STUDIO</span><span>9:16 · PREVIEW</span></div><div class="reel-preview-center"><span class="reel-preview-kicker">PARTE ' + String(episode.number).padStart(2, "0") + '</span><h3>' + escapeHtml(previewHeadline) + '</h3><p>' + escapeHtml(previewVisual) + '</p><span class="reel-play-mark">▶</span></div><div class="reel-preview-bottom"><div class="reel-mini-avatar">W</div><div><b>@whatifstudio</b><small>' + escapeHtml(episode.title) + '</small></div><span class="reel-preview-heart">♥</span></div><div class="reel-progress"><i></i><i></i><i></i><i></i></div></div><div class="preview-inspector"><span class="eyebrow">ÁUDIO / CENA 01</span><p>' + escapeHtml(previewAudio) + '</p><div class="preview-inspector-foot"><span>Prévia conceitual</span><span>Não é render de vídeo</span></div></div></div><p class="preview-disclaimer">A tela acima é uma referência de composição do storyboard. O arquivo de vídeo final deve ser montado em um editor de vídeo usando os prompts, cenas e áudios planejados.</p></section>' +
+      '<div class="video-editor-layout"><div class="video-editor-main"><section class="panel video-preview-panel"><div class="panel-heading"><div><span class="eyebrow">MONITOR DE PRÉVIA</span><h2>Composição vertical</h2></div><div class="preview-mode-chip"><i></i> STORYBOARD</div></div><div class="video-preview-stage"><div class="reel-preview"><div class="reel-preview-top"><span>WHAT IF STUDIO</span><span>9:16 · PREVIEW</span></div><div class="reel-preview-center"><span class="reel-preview-kicker">PARTE ' + String(episode.number).padStart(2, "0") + '</span><h3 data-preview-headline>' + escapeHtml(previewHeadline) + '</h3><p data-preview-visual>' + escapeHtml(previewVisual) + '</p><span class="reel-play-mark">▶</span></div><div class="reel-preview-bottom"><div class="reel-mini-avatar">W</div><div><b>@whatifstudio</b><small data-preview-title>' + escapeHtml(episode.title) + '</small></div><span class="reel-preview-heart">♥</span></div><div class="reel-progress"><i></i><i></i><i></i><i></i></div></div><div class="preview-inspector"><span class="eyebrow" data-preview-audio-label>ÁUDIO / CENA ' + String((scenes.findIndex((scene) => scene.id === activeScene.id) + 1) || 1).padStart(2, "0") + '</span><p data-preview-audio>' + escapeHtml(previewAudio) + '</p><div class="preview-inspector-foot"><span>Prévia conceitual</span><span>Não é render de vídeo</span></div></div></div><p class="preview-disclaimer">A tela acima é uma referência de composição do storyboard. O arquivo de vídeo final deve ser montado em um editor de vídeo usando os prompts, cenas e áudios planejados.</p></section>' +
       '<section class="panel video-timeline-panel"><div class="panel-heading"><div><span class="eyebrow">SEQUÊNCIA</span><h2>Storyboard / timeline</h2></div><button class="button button-secondary button-small" data-action="add-scene">＋ Adicionar cena</button></div>' + timeline + '</section>' +
       '<section class="panel video-script-panel"><div class="panel-heading"><div><span class="eyebrow">ROTEIRO</span><h2>Texto e narrativa</h2></div><span class="save-chip"><i></i> Auto-save</span></div><div class="form-grid">' + episodeField("Título do vídeo", "title", episode.title, "Nome do episódio") + episodeField("Resumo / gancho", "summary", episode.summary, "O que prende a atenção nos primeiros segundos?", "textarea") + episodeField("Roteiro completo", "script", episode.script, "Narração, falas, ações e texto na tela...", "textarea") + '</div><div class="save-hint"><span class="live-dot"></span> Roteiro salvo automaticamente.</div></section>' +
-      '</div><aside class="video-editor-aside"><section class="panel video-settings-panel"><span class="eyebrow">CONFIGURAÇÃO DO VÍDEO</span><h3>Produção</h3><label class="field"><span>Status</span><select data-episode-field="status"><option ' + (episode.status === "Rascunho" ? "selected" : "") + '>Rascunho</option><option ' + (episode.status === "Em revisão" ? "selected" : "") + '>Em revisão</option><option ' + (episode.status === "Pronto" ? "selected" : "") + '>Pronto</option><option ' + (episode.status === "Publicado" ? "selected" : "") + '>Publicado</option></select></label><div class="production-spec-row"><span>Formato</span><b>Vertical · 9:16</b></div><div class="production-spec-row"><span>Duração estimada</span><b>' + totalSeconds + ' segundos</b></div><p class="muted small">Pense no primeiro segundo como uma promessa visual. Cada cena precisa entregar uma informação nova.</p><button class="button button-ghost button-wide" data-action="add-scene">＋ Nova cena</button><button class="button button-danger-ghost button-wide" data-action="delete-episode">Excluir episódio</button></section>' +
+      '</div><aside class="video-editor-aside"><section class="panel video-settings-panel"><span class="eyebrow">CONFIGURAÇÃO DO VÍDEO</span><h3>Produção</h3><label class="field"><span>Status</span><select data-episode-field="status"><option ' + (episode.status === "Rascunho" ? "selected" : "") + '>Rascunho</option><option ' + (episode.status === "Em revisão" ? "selected" : "") + '>Em revisão</option><option ' + (episode.status === "Pronto" ? "selected" : "") + '>Pronto</option><option ' + (episode.status === "Publicado" ? "selected" : "") + '>Publicado</option></select></label><div class="production-spec-row"><span>Formato</span><b>Vertical · 9:16</b></div><div class="production-spec-row"><span>Duração estimada</span><b data-production-duration>' + totalSeconds + ' segundos</b></div><p class="muted small">Pense no primeiro segundo como uma promessa visual. Cada cena precisa entregar uma informação nova.</p><button class="button button-ghost button-wide" data-action="add-scene">＋ Nova cena</button><button class="button button-danger-ghost button-wide" data-action="delete-episode">Excluir episódio</button></section>' +
       '<section class="panel publish-panel"><span class="eyebrow">PACOTE DE PUBLICAÇÃO</span><h3>Depois de editar</h3><div class="form-grid">' + episodeField("Legenda do post", "caption", episode.caption, "Texto da publicação...", "textarea") + episodeField("Comentário fixado", "pinnedComment", episode.pinnedComment, "Contexto ou chamada para votar...", "textarea") + episodeField("Enquete para Stories", "storyPoll", episode.storyPoll, "Pergunta e opções para publicar...", "textarea") + '</div></section></aside></div>' +
       '<section class="panel video-scenes-panel"><div class="panel-heading"><div><span class="eyebrow">DECUPAGEM DETALHADA</span><h2>Cenas, prompts e áudio</h2><p class="muted small">Descreva o plano, o movimento, a voz e o texto que aparece em cada take.</p></div><button class="button button-secondary button-small" data-action="add-scene">＋ Adicionar cena</button></div>' + sceneCards + '</section></div>';
   }
@@ -460,6 +477,7 @@
     const episode = makeEpisode(project.episodes.length + 1);
     project.episodes.push(episode);
     activeEpisodeId = episode.id;
+    activeSceneId = null;
     activeTab = "episodes";
     project.updatedAt = new Date().toISOString();
     save(); render();
@@ -469,7 +487,9 @@
     const project = currentProject();
     const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
     if (!episode) return;
-    episode.scenes.push({ id: uid(), title: "Nova cena", visual: "", imagePrompt: "", videoPrompt: "", audio: "", audioDirection: "", onScreen: "", duration: 8, sfx: "" });
+    const scene = { id: uid(), title: "Nova cena", visual: "", imagePrompt: "", videoPrompt: "", audio: "", audioDirection: "", onScreen: "", duration: 8, sfx: "" };
+    episode.scenes.push(scene);
+    activeSceneId = scene.id;
     save(); render();
   }
 
@@ -610,9 +630,10 @@
     if (action === "close-modal") return closeModal();
     if (action === "navigate") { activeView = button.dataset.view; render(); return; }
     if (action === "open-project") return openProject(button.dataset.id);
-    if (action === "switch-tab") { activeTab = button.dataset.tab; activeEpisodeId = null; render(); return; }
-    if (action === "select-episode") { activeTab = "episodes"; activeEpisodeId = button.dataset.id; render(); return; }
-    if (action === "back-episodes") { activeEpisodeId = null; render(); return; }
+    if (action === "switch-tab") { activeTab = button.dataset.tab; activeEpisodeId = null; activeSceneId = null; render(); return; }
+    if (action === "select-episode") { activeTab = "episodes"; activeEpisodeId = button.dataset.id; activeSceneId = null; render(); return; }
+    if (action === "select-scene") { activeSceneId = button.dataset.id; render(); return; }
+    if (action === "back-episodes") { activeEpisodeId = null; activeSceneId = null; render(); return; }
     if (action === "add-episode") return addEpisode();
     if (action === "add-scene") return addScene();
     if (action === "add-character") return showCharacterModal();
@@ -663,6 +684,7 @@
     if (action === "delete-scene" && project) {
       const episode = project.episodes.find((item) => item.id === activeEpisodeId);
       if (episode) episode.scenes = episode.scenes.filter((scene) => scene.id !== button.dataset.id);
+      if (activeSceneId === button.dataset.id) activeSceneId = null;
       save(); render(); return;
     }
     if (action === "delete-episode" && project) {
@@ -731,12 +753,56 @@
     }
     if (target.dataset.episodeField) {
       const episode = project.episodes.find((item) => item.id === activeEpisodeId);
-      if (episode) { episode[target.dataset.episodeField] = target.value; save(); }
+      if (episode) {
+        episode[target.dataset.episodeField] = target.value;
+        if (target.dataset.episodeField === "title") { const previewTitle = $("[data-preview-title]"); if (previewTitle) previewTitle.textContent = target.value || "Episódio"; }
+        const previewScene = episode.scenes.find((scene) => scene.id === activeSceneId) || episode.scenes[0];
+        if (target.dataset.episodeField === "title" && (!previewScene || !previewScene.onScreen)) { const headline = $("[data-preview-headline]"); if (headline) headline.textContent = target.value || "Sua próxima história começa aqui."; }
+        if (target.dataset.episodeField === "summary" && (!previewScene || !previewScene.visual)) { const previewVisual = $("[data-preview-visual]"); if (previewVisual) previewVisual.textContent = target.value || "Adicione a descrição visual da primeira cena."; }
+        save();
+      }
     }
     if (target.dataset.sceneField) {
       const episode = project.episodes.find((item) => item.id === activeEpisodeId);
       const scene = episode && episode.scenes.find((item) => item.id === target.dataset.sceneId);
-      if (scene) { scene[target.dataset.sceneField] = target.value; save(); }
+      if (scene) {
+        scene[target.dataset.sceneField] = target.value;
+        const sceneTitle = $("[data-scene-title=\"" + scene.id + "\"]");
+        const storyboardTitle = $("[data-storyboard-title=\"" + scene.id + "\"]");
+        const storyboardCaption = $("[data-storyboard-caption=\"" + scene.id + "\"]");
+        if (target.dataset.sceneField === "title") {
+          if (sceneTitle) sceneTitle.textContent = target.value || "Plano sem título";
+          if (storyboardTitle) storyboardTitle.textContent = target.value || "Cena";
+        }
+        if (target.dataset.sceneField === "onScreen" || target.dataset.sceneField === "visual") {
+          if (storyboardCaption) storyboardCaption.textContent = scene.onScreen || scene.visual || "Sem descrição visual";
+        }
+        if (target.dataset.sceneField === "duration") {
+          const duration = Math.max(1, Number(target.value) || 8);
+          const sceneDuration = $("[data-storyboard-duration=\"" + scene.id + "\"]");
+          if (sceneDuration) sceneDuration.textContent = duration + "s";
+          const totalDuration = episode.scenes.reduce((sum, item) => sum + Math.max(1, Number(item.duration) || 8), 0);
+          const specs = $(".video-editor-specs span:last-child");
+          const production = $("[data-production-duration]");
+          if (specs) specs.textContent = totalDuration + "s estimados";
+          if (production) production.textContent = totalDuration + " segundos";
+          let elapsed = 0;
+          episode.scenes.forEach((item) => {
+            const timecode = formatTimecode(elapsed);
+            const sceneTimecode = $("[data-scene-timecode=\"" + item.id + "\"]");
+            const storyboardTimecode = $("[data-storyboard-timecode=\"" + item.id + "\"]");
+            if (sceneTimecode) sceneTimecode.textContent = timecode;
+            if (storyboardTimecode) storyboardTimecode.textContent = timecode;
+            elapsed += Math.max(1, Number(item.duration) || 8);
+          });
+        }
+        if (scene.id === activeSceneId || (!activeSceneId && episode.scenes[0] === scene)) {
+          if (target.dataset.sceneField === "onScreen") { const headline = $("[data-preview-headline]"); if (headline) headline.textContent = target.value || episode.title || "Sua próxima história começa aqui."; }
+          if (target.dataset.sceneField === "visual") { const visual = $("[data-preview-visual]"); if (visual) visual.textContent = target.value || episode.summary || "Adicione a descrição visual da primeira cena."; }
+          if (target.dataset.sceneField === "audio") { const audio = $("[data-preview-audio]"); if (audio) audio.textContent = target.value || "Narração e diálogo aparecem aqui."; }
+        }
+        save();
+      }
     }
     if (target.dataset.sourceField) {
       const source = (project.sources || []).find((item) => item.id === target.dataset.sourceId);
