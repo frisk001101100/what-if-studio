@@ -95,6 +95,7 @@
       duration: data.duration || "60–90 segundos",
       tone: data.tone || "Mistério cinematográfico",
       audience: data.audience || "Público geral",
+      pacing: data.pacing || "Dinâmico",
       status: "Em desenvolvimento",
       createdAt: now,
       updatedAt: now,
@@ -212,6 +213,9 @@
       '<label class="field"><span>Plataforma</span><select data-bind="platform">' + ["TikTok / Reels / Shorts", "YouTube", "Podcast", "Web", "Outra"].map((item) => '<option ' + (project.platform === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
       '<label class="field"><span>Duração por episódio</span><select data-bind="duration">' + ["Até 30 segundos", "30–60 segundos", "60–90 segundos", "2–3 minutos", "5–10 minutos", "Livre"].map((item) => '<option ' + (project.duration === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
       '<label class="field"><span>Tom</span><input data-bind="tone" value="' + escapeHtml(project.tone) + '" placeholder="Ex.: suspense, humor, documental"></label>' +
+      '<label class="field"><span>Idioma</span><select data-bind="language">' + ["Português (Brasil)", "English", "Español"].map((item) => '<option ' + (project.language === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
+      '<label class="field"><span>Público-alvo</span><select data-bind="audience">' + ["Público geral", "Adolescente", "Jovem", "Família", "Educativo"].map((item) => '<option ' + (project.audience === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
+      '<label class="field"><span>Ritmo narrativo</span><select data-bind="pacing">' + ["Dinâmico", "Lento e atmosférico", "Crescente", "Episódico", "Investigativo", "Com cortes rápidos"].map((item) => '<option ' + (project.pacing === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
       '</div><div class="save-hint"><span class="live-dot"></span> Alterações salvas automaticamente neste dispositivo.</div></section>' +
       '<aside class="panel panel-accent"><span class="eyebrow">PRÓXIMOS PASSOS</span><h2>Construa com intenção.</h2><p>Uma boa história interativa tem regras claras, escolhas com consequências e continuidade entre episódios.</p><div class="check-row"><span class="' + (project.world.rules.length ? "check-done" : "") + '">✓</span><span>Definir as regras do universo</span></div><div class="check-row"><span class="' + (project.characters.length ? "check-done" : "") + '">✓</span><span>Criar personagens</span></div><div class="check-row"><span class="' + (project.episodes.some((episode) => episode.script) ? "check-done" : "") + '">✓</span><span>Escrever o primeiro roteiro</span></div><div class="check-row"><span class="' + (project.polls.length ? "check-done" : "") + '">✓</span><span>Preparar uma votação</span></div><button class="button button-primary button-wide" data-action="generate-project">✦ Desenvolver estrutura com IA</button></aside></div>' +
       '<section class="panel"><div class="panel-heading"><div><span class="eyebrow">LINHA DO TEMPO</span><h2>Seus episódios</h2></div><button class="button button-secondary button-small" data-action="switch-tab" data-tab="episodes">Abrir episódios →</button></div>' +
