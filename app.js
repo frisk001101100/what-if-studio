@@ -16,8 +16,10 @@
     const total = Math.floor(Math.max(0, Number(seconds) || 0));
     return String(Math.floor(total / 60)).padStart(2, "0") + ':' + String(total % 60).padStart(2, "0");
   };
-  const defaultState = () => ({ projects: [], activeProjectId: null });
+  const defaultState = () => ({ projects: [], activeProjectId: null, course: { title: "Curso What If", description: "Aprenda a transformar ideias em roteiros curtos, vídeos envolventes e histórias que crescem com a participação do público.", price: "", paymentNote: "Fale comigo pelo WhatsApp para receber detalhes e formas de pagamento." } });
   let state = loadState();
+  state.course = { ...defaultState().course, ...(state.course || {}) };
+  state.publishQueue = Array.isArray(state.publishQueue) ? state.publishQueue : [];
   let activeView = "dashboard";
   let activeTab = "overview";
   let activeEpisodeId = null;
@@ -160,7 +162,7 @@
     const project = currentProject();
     const navView = activeView === "editor" ? "projects" : activeView;
     $$("[data-nav]").forEach((item) => item.classList.toggle("active", item.dataset.nav === navView));
-    const title = activeView === "editor" && project ? project.title : activeView === "projects" ? "Projetos" : activeView === "settings" ? "Configurações" : "Visão geral";
+    const title = activeView === "editor" && project ? project.title : activeView === "projects" ? "Projetos" : activeView === "settings" ? "Configurações" : activeView === "publishing" ? "Publicação" : activeView === "course" ? "Curso" : "Visão geral";
     $("#page-title").textContent = title;
     $("#save-status").textContent = signedInUser ? "Sincronização ativada" : "Salvo neste dispositivo";
     const aiButton = $('[data-action="configure-ai"]');
@@ -169,7 +171,41 @@
     if (activeView === "editor" && project) root.innerHTML = renderEditor(project);
     else if (activeView === "projects") root.innerHTML = renderProjects();
     else if (activeView === "settings") root.innerHTML = renderSettings();
+    else if (activeView === "publishing") root.innerHTML = renderPublishing();
+    else if (activeView === "course") root.innerHTML = renderCourse();
     else root.innerHTML = renderDashboard();
+  }
+
+  function renderCourse() {
+    const course = state.course;
+    const price = course.price ? '<span class="course-price">' + escapeHtml(course.price) + '</span>' : '<span class="course-price">Consulte as condições pelo WhatsApp</span>';
+    const message = encodeURIComponent("Olá! Quero saber mais sobre o curso: " + (course.title || "Curso What If"));
+    return '<div class="page-stack"><section class="hero-panel course-hero"><div class="hero-copy"><span class="eyebrow">APRENDA A CRIAR</span><h1>' + escapeHtml(course.title) + '</h1><p>' + escapeHtml(course.description) + '</p>' + price + '<a class="button button-primary" href="https://wa.me/5582993485560?text=' + message + '" target="_blank" rel="noopener noreferrer">Conversar no WhatsApp <span>→</span></a><small class="course-contact-note">' + escapeHtml(course.paymentNote) + '</small></div><div class="course-art" aria-hidden="true"><span>IDEIA</span><i>→</i><b>ROTEIRO</b><i>→</i><strong>HISTÓRIA</strong></div></section>' +
+      '<section class="panel course-edit-panel"><div class="panel-heading"><div><span class="eyebrow">SUA OFERTA</span><h2>Prévia editável neste navegador</h2></div><span class="status-pill">Salvo neste dispositivo</span></div><p class="muted">Edite o texto e o preço para conferir a apresentação. Estas alterações ainda não são compartilhadas com outros visitantes.</p><div class="form-grid"><label class="field full"><span>Nome do curso</span><input data-course-field="title" maxlength="100" value="' + escapeHtml(course.title) + '"></label><label class="field full"><span>Descrição</span><textarea data-course-field="description" maxlength="600">' + escapeHtml(course.description) + '</textarea></label><label class="field"><span>Preço (opcional)</span><input data-course-field="price" maxlength="60" value="' + escapeHtml(course.price) + '" placeholder="Ex.: R$ 197 ou consulte no WhatsApp"></label><label class="field"><span>Informação de pagamento</span><input data-course-field="paymentNote" maxlength="160" value="' + escapeHtml(course.paymentNote) + '"></label></div><p class="small muted" data-course-payment-note>' + escapeHtml(course.paymentNote) + '</p><p class="small muted">Esta versão inicia o atendimento no WhatsApp; ela não processa nem confirma pagamentos automaticamente. O pagamento Pix é combinado e confirmado manualmente por você.</p></section></div>';
+  }
+
+  function renderPublishing() {
+    const projects = state.projects;
+    if (!projects.length) return '<div class="page-stack"><div class="empty-state"><div class="empty-illustration">▶</div><h2>Prepare sua primeira publicação</h2><p>Crie um projeto e um episódio para organizar roteiro, legenda e votação.</p><button class="button button-primary" data-action="new-project">Criar projeto</button></div><section class="panel integration-note"><span class="eyebrow">INSTAGRAM</span><h3>Conta ainda não conectada</h3><p>O planejamento e a votação manual já podem ser usados. Para publicar e importar comentários automaticamente, esta conta precisa ser conectada pelo fluxo oficial da Meta.</p></section></div>';
+    const chosenProject = projects.find((item) => item.id === state.publishProjectId) || projects[0];
+    const chosenEpisode = chosenProject.episodes.find((item) => item.id === state.publishEpisodeId) || chosenProject.episodes[0];
+    if (!chosenEpisode) return '<div class="empty-state"><h2>Este projeto ainda não tem episódios</h2><button class="button button-primary" data-action="open-project" data-id="' + escapeHtml(chosenProject.id) + '">Abrir projeto</button></div>';
+    const script = chosenEpisode.script || "Gere ou escreva o roteiro na área de vídeos do projeto.";
+    const caption = chosenEpisode.caption || "Adicione uma legenda antes de publicar.";
+    const sceneList = (chosenEpisode.scenes || []).map((scene, index) => '<li><b>Cena ' + (index + 1) + ' · ' + escapeHtml(scene.title || "Sem título") + '</b><span>' + escapeHtml(scene.visual || scene.videoPrompt || "Descreva o plano") + '</span></li>').join("");
+    const queue = state.publishQueue.slice().sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    const queueRows = queue.map((item) => {
+      const queuedProject = projects.find((project) => project.id === item.projectId);
+      const queuedEpisode = queuedProject && queuedProject.episodes.find((episode) => episode.id === item.episodeId);
+      if (!queuedEpisode) return "";
+      return '<article class="queue-row"><span class="queue-date">' + escapeHtml(new Date(item.scheduledAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })) + '</span><b>' + escapeHtml(queuedProject.title + " · " + queuedEpisode.title) + '</b><span class="status-pill">Planejado</span><button class="text-button" data-action="remove-from-queue" data-id="' + escapeHtml(item.id) + '">Remover</button></article>';
+    }).join("");
+    const dailyLimit = 4;
+    return '<div class="page-stack"><div class="section-heading"><div><span class="eyebrow">DO ROTEIRO AO POST</span><h1>Preparar publicação</h1><p class="muted">Revise o vídeo e a legenda. Nada é publicado sem a integração oficial e sua autorização.</p></div><span class="status-pill">Rascunho</span></div>' +
+      '<section class="panel publishing-selectors"><label class="field"><span>Projeto</span><select data-publish-select="project">' + projects.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === chosenProject.id ? "selected" : "") + '>' + escapeHtml(item.title) + '</option>').join("") + '</select></label><label class="field"><span>Episódio</span><select data-publish-select="episode">' + chosenProject.episodes.map((item) => '<option value="' + escapeHtml(item.id) + '" ' + (item.id === chosenEpisode.id ? "selected" : "") + '>Parte ' + item.number + ' · ' + escapeHtml(item.title) + '</option>').join("") + '</select></label><button class="button button-secondary" data-action="edit-publish-episode">Editar roteiro →</button></section>' +
+      '<div class="publishing-grid"><section class="panel"><span class="eyebrow">ROTEIRO</span><h2>' + escapeHtml(chosenEpisode.title) + '</h2><p class="publish-script">' + escapeHtml(script) + '</p>' + (sceneList ? '<ol class="publish-scene-list">' + sceneList + '</ol>' : '<p class="small muted">Adicione cenas e prompts para orientar a gravação ou edição do vídeo.</p>') + '<button class="button button-secondary" data-action="copy-publish" data-field="script">Copiar roteiro</button></section><section class="panel"><span class="eyebrow">LEGENDA E VOTAÇÃO</span><h2>Texto para o post</h2><p class="publish-script">' + escapeHtml(caption) + '</p><div class="callout-note">A votação por comentários será contabilizada na aba Enquetes do projeto. Você pode colar os comentários recebidos; o texto original não fica salvo.</div><button class="button button-secondary" data-action="copy-publish" data-field="caption">Copiar legenda</button><button class="button button-ghost" data-action="open-publish-poll">Configurar votação →</button></section></div>' +
+      '<section class="panel schedule-panel"><div class="panel-heading"><div><span class="eyebrow">PLANEJAMENTO</span><h2>Meta: até 4 vídeos por dia</h2></div><span class="status-pill">Fila deste navegador</span></div><div class="schedule-add-row"><label class="field"><span>Data e hora</span><input type="datetime-local" data-publish-time></label><button class="button button-primary" data-action="add-to-queue">Adicionar à fila</button></div><div class="queue-list">' + (queueRows || '<p class="small muted">Nenhum vídeo planejado. Defina a data e a hora acima.</p>') + '</div><p class="small muted">A fila organiza datas e bloqueia mais de quatro itens por dia, mas ainda não publica automaticamente. A publicação programada exige a integração e a autorização Meta.</p></section>' +
+      '<section class="panel integration-note"><div><span class="eyebrow">PUBLICAÇÃO NO INSTAGRAM</span><h2>Conexão necessária</h2><p>O app já organiza roteiro, storyboard e legenda, mas ainda não renderiza o arquivo de vídeo nem publica na conta. A publicação oficial exige uma conta Profissional (Criador ou Empresa), um app Meta com permissões aprovadas e um arquivo de vídeo acessível pelo servidor. A conta que você criar deve ser convertida em Profissional e conectada ao app.</p></div><a class="button button-secondary" href="https://developers.facebook.com/docs/instagram-platform/content-publishing/" target="_blank" rel="noopener noreferrer">Ver requisitos da Meta</a></section></div>';
   }
 
   function renderDashboard() {
@@ -305,7 +341,7 @@
         const options = poll.options || [];
         const total = options.reduce((sum, option) => sum + Number(option.votes || 0), 0);
         const max = Math.max(1, ...options.map((option) => Number(option.votes || 0)));
-        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div>' + (option.consequence ? '<small class="branch-consequence">Se vencer: ' + escapeHtml(option.consequence) + '</small>' : '') + '<div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div></article>';
+        return '<article class="panel poll-card"><div class="poll-heading"><div><span class="eyebrow">VOTAÇÃO</span><h3>' + escapeHtml(poll.question) + '</h3></div><button class="icon-button danger-text" data-action="delete-poll" data-id="' + escapeHtml(poll.id) + '">×</button></div><div class="poll-options">' + options.map((option, index) => '<div class="poll-option"><div class="poll-option-head"><b>' + escapeHtml(option.label) + '</b><span>' + Number(option.votes || 0) + ' votos</span></div>' + (option.consequence ? '<small class="branch-consequence">Se vencer: ' + escapeHtml(option.consequence) + '</small>' : '') + '<div class="poll-track"><span style="width:' + Math.round(Number(option.votes || 0) / max * 100) + '%"></span></div><button class="text-button vote-button" data-action="add-vote" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">+ Registrar voto</button><button class="text-button" data-action="set-winner" data-id="' + escapeHtml(poll.id) + '" data-index="' + index + '">Definir vencedora</button></div>').join("") + '</div><div class="poll-result"><span>Total: <b>' + total + '</b></span><span>Vencedora: <b>' + escapeHtml(poll.winner || "A definir") + '</b></span></div><div class="consequence"><b>Consequência narrativa</b><p>' + escapeHtml(poll.consequence || "Ainda não registrada.") + '</p></div><form data-form="count-poll-comments" data-poll-id="' + escapeHtml(poll.id) + '" class="comment-vote-form"><label class="field"><span>Contar votos dos comentários</span><textarea name="comments" required placeholder="Cole aqui um comentário por linha. Ex.: A, 1, ou o nome exato da opção."></textarea></label><p class="small muted">Conta comentários que mencionem apenas uma opção. O texto colado é processado nesta aba e não é salvo.</p><button class="button button-secondary button-small" type="submit">Somar votos reconhecidos</button></form></article>';
       }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">◉</div><h3>Deixe o público decidir</h3><p>Uma boa enquete cria uma escolha clara e faz cada alternativa produzir um caminho diferente.</p><button class="button button-primary" data-action="add-poll">Criar enquete</button></div>');
   }
 
@@ -655,6 +691,48 @@
     if (action === "configure-ai") return showAiProviderModal();
     if (action === "clear-ai-key") { aiSessionCredentials = null; render(); notify("Chave esquecida nesta aba.", "success"); return; }
     if (action === "navigate") { activeView = button.dataset.view; render(); return; }
+    if (action === "edit-publish-episode") {
+      const projectId = state.publishProjectId || state.projects[0]?.id;
+      const projectToEdit = state.projects.find((item) => item.id === projectId);
+      if (!projectToEdit) return;
+      state.activeProjectId = projectToEdit.id;
+      activeView = "editor"; activeTab = "episodes";
+      activeEpisodeId = state.publishEpisodeId || projectToEdit.episodes[0]?.id || null;
+      activeSceneId = null; save(false); render(); return;
+    }
+    if (action === "open-publish-poll") {
+      const projectToEdit = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      if (!projectToEdit) return;
+      state.activeProjectId = projectToEdit.id; activeView = "editor"; activeTab = "polls";
+      activeEpisodeId = null; activeSceneId = null; save(false); render(); return;
+    }
+    if (action === "add-to-queue") {
+      const projectToQueue = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      const episodeToQueue = projectToQueue && (projectToQueue.episodes.find((item) => item.id === state.publishEpisodeId) || projectToQueue.episodes[0]);
+      if (!projectToQueue || !episodeToQueue) { notify("Escolha um projeto com episódio para planejar.", "error"); return; }
+      const scheduleInput = $("[data-publish-time]");
+      const scheduledAt = scheduleInput && new Date(scheduleInput.value);
+      if (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) { notify("Escolha uma data e hora futuras.", "error"); return; }
+      const dayKey = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+      const dailyCount = state.publishQueue.filter((item) => dayKey(new Date(item.scheduledAt)) === dayKey(scheduledAt)).length;
+      if (dailyCount >= 4) { notify("A fila já tem quatro vídeos planejados para esse dia.", "error"); return; }
+      if (state.publishQueue.some((item) => item.episodeId === episodeToQueue.id && item.projectId === projectToQueue.id)) { notify("Este episódio já está na fila.", "error"); return; }
+      state.publishQueue.push({ id: uid(), projectId: projectToQueue.id, episodeId: episodeToQueue.id, scheduledAt: scheduledAt.toISOString(), status: "planned" });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); notify("Vídeo adicionado ao planejamento.", "success"); return;
+    }
+    if (action === "remove-from-queue") {
+      state.publishQueue = state.publishQueue.filter((item) => item.id !== button.dataset.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
+    if (action === "copy-publish") {
+      const projectToCopy = state.projects.find((item) => item.id === state.publishProjectId) || state.projects[0];
+      const episodeToCopy = projectToCopy && projectToCopy.episodes.find((item) => item.id === state.publishEpisodeId) || projectToCopy?.episodes[0];
+      const text = episodeToCopy && (button.dataset.field === "caption" ? episodeToCopy.caption : episodeToCopy.script);
+      if (!text) { notify("Este campo ainda está vazio.", "error"); return; }
+      try { await navigator.clipboard.writeText(text); notify("Texto copiado.", "success"); }
+      catch (_) { notify("Não foi possível copiar automaticamente neste navegador.", "error"); }
+      return;
+    }
     if (action === "open-project") return openProject(button.dataset.id);
     if (action === "switch-tab") { activeTab = button.dataset.tab; activeEpisodeId = null; activeSceneId = null; render(); return; }
     if (action === "select-episode") { activeTab = "episodes"; activeEpisodeId = button.dataset.id; activeSceneId = null; render(); return; }
@@ -775,6 +853,24 @@
 
   document.addEventListener("input", (event) => {
     const target = event.target;
+    if (target.dataset.courseField) {
+      state.course[target.dataset.courseField] = target.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      const coursePreview = $(".course-hero");
+      if (coursePreview) {
+        const heading = $("h1", coursePreview), description = $(".hero-copy p", coursePreview), price = $(".course-price", coursePreview);
+        const note = $("[data-course-payment-note]");
+        if (target.dataset.courseField === "title" && heading) heading.textContent = target.value;
+        if (target.dataset.courseField === "description" && description) description.textContent = target.value;
+        if (target.dataset.courseField === "price" && price) price.textContent = target.value || "Consulte as condições pelo WhatsApp";
+        if (target.dataset.courseField === "paymentNote" && note) note.textContent = target.value;
+        if (target.dataset.courseField === "title") {
+          const contact = $("a.button", coursePreview);
+          if (contact) contact.href = "https://wa.me/5582993485560?text=" + encodeURIComponent("Olá! Quero saber mais sobre o curso: " + target.value);
+        }
+      }
+      return;
+    }
     const project = currentProject();
     if (!project) return;
     if (target.dataset.bind) {
@@ -844,6 +940,16 @@
 
   document.addEventListener("change", async (event) => {
     const target = event.target;
+    if (target.dataset.publishSelect === "project") {
+      state.publishProjectId = target.value;
+      const selectedProject = state.projects.find((item) => item.id === target.value);
+      state.publishEpisodeId = selectedProject && selectedProject.episodes[0] ? selectedProject.episodes[0].id : null;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
+    if (target.dataset.publishSelect === "episode") {
+      state.publishEpisodeId = target.value;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); render(); return;
+    }
     if (target.dataset.importFile !== undefined && target.files && target.files[0]) {
       const file = target.files[0];
       if (file.size > 2 * 1024 * 1024) { notify("O arquivo precisa ter até 2 MB.", "error"); target.value = ""; return; }
@@ -970,6 +1076,42 @@
     }
     if (type === "cloud-login") {
       await sendMagicLink(data.email); return;
+    }
+    if (type === "count-poll-comments" && project) {
+      const poll = project.polls.find((item) => item.id === form.dataset.pollId);
+      if (!poll || !Array.isArray(poll.options)) return;
+      const lines = String(data.comments || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      const normalize = (value) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+      const totals = poll.options.map(() => 0);
+      let ignored = 0;
+      lines.forEach((line) => {
+        const normalizedLine = normalize(line);
+        let matched = normalizedLine === "a" && poll.options[0] ? [{ index: 0 }] : normalizedLine === "b" && poll.options[1] ? [{ index: 1 }] : [];
+        if (!matched.length) matched = poll.options.map((option, index) => ({ index, label: normalize(option.label) })).filter((item) => item.label && (normalizedLine === item.label || normalizedLine.includes(item.label)));
+        if (!matched.length) {
+          const choice = normalizedLine.match(/^\s*([1-6a-f])(?:\s*[-:.)]\s*|\s+)/i);
+          if (choice) {
+            const code = choice[1].toLowerCase();
+            const index = /^[1-6]$/.test(code) ? Number(code) - 1 : code.charCodeAt(0) - 97;
+            if (index >= 0 && index < poll.options.length) matched = [{ index }];
+          }
+        }
+        if (matched.length === 1) totals[matched[0].index] += 1;
+        else ignored += 1;
+      });
+      const recognized = totals.reduce((sum, value) => sum + value, 0);
+      if (!recognized) { notify("Não encontrei comentários que correspondam a uma opção sem ambiguidade.", "error"); return; }
+      poll.options.forEach((option, index) => { option.votes = Number(option.votes || 0) + totals[index]; });
+      const finalCounts = poll.options.map((option) => Number(option.votes || 0));
+      const highScore = Math.max(...finalCounts);
+      const winners = finalCounts.map((value, index) => value === highScore ? index : -1).filter((index) => index >= 0);
+      if (highScore > 0 && winners.length === 1) {
+        const winner = poll.options[winners[0]];
+        poll.winner = winner.label;
+        project.continuity.push({ id: uid(), type: "Decisão da audiência", text: "A votação pelos comentários em \"" + poll.question + "\" escolheu \"" + winner.label + "\". " + (winner.consequence || poll.consequence || ""), createdAt: new Date().toISOString() });
+      }
+      save(); render();
+      notify(recognized + " voto(s) somado(s). " + ignored + " comentário(s) ignorado(s)." + (winners.length === 1 ? " Roteiro seguinte atualizado com a opção vencedora." : " Empate: escolha a vencedora depois."), "success"); return;
     }
   });
 
