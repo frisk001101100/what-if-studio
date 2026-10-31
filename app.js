@@ -22,6 +22,8 @@
   let activeTab = "overview";
   let activeEpisodeId = null;
   let activeSceneId = null;
+  let aiSessionCredentials = null;
+  let pendingAiGeneration = null;
   let supabaseClient = null;
   let signedInUser = null;
   let cloudSyncTimer = null;
@@ -161,6 +163,8 @@
     const title = activeView === "editor" && project ? project.title : activeView === "projects" ? "Projetos" : activeView === "settings" ? "Configurações" : "Visão geral";
     $("#page-title").textContent = title;
     $("#save-status").textContent = signedInUser ? "Sincronização ativada" : "Salvo neste dispositivo";
+    const aiButton = $('[data-action="configure-ai"]');
+    if (aiButton) aiButton.textContent = aiSessionCredentials ? "IA: " + aiProviderLabel(aiSessionCredentials.provider) : "Configurar IA";
     const root = $("#app");
     if (activeView === "editor" && project) root.innerHTML = renderEditor(project);
     else if (activeView === "projects") root.innerHTML = renderProjects();
@@ -340,8 +344,19 @@
       '<label class="field"><span>Anon / publishable key</span><input name="supabaseAnon" type="password" autocomplete="off" placeholder="Chave pública do Supabase" value="' + escapeHtml(settings.supabaseAnon || "") + '"></label><div class="form-actions"><button class="button button-primary" type="submit">Salvar configuração</button><span class="small muted">A chave pública fica no navegador e depende das políticas RLS do banco.</span></div></form>' +
       '<div class="cloud-account">' + (signedInUser ? '<div><b>Conectado como ' + escapeHtml(signedInUser.email || "usuário") + '</b><p class="small muted">Os projetos serão sincronizados com sua conta.</p></div><button class="button button-secondary" data-action="cloud-signout">Sair</button><button class="button button-primary" data-action="cloud-sync">Sincronizar agora</button>' : '<form data-form="cloud-login" class="login-form"><label class="field"><span>Seu e-mail</span><input name="email" type="email" required placeholder="voce@exemplo.com"></label><button class="button button-secondary" type="submit" ' + (isConfigured ? "" : "disabled") + '>Enviar link de acesso</button></form>') + '</div>' +
       '<p class="small muted">O schema e as políticas por usuário já foram instalados. Depois que o site estiver publicado, a URL final será adicionada à lista de redirecionamentos permitidos do Supabase.</p></section>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>OpenAI API</h2></div><span class="service-status configured">Servidor</span></div><p>A geração por IA usa a função segura <code>/api/generate</code>. Configure <code>OPENAI_API_KEY</code>, <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> nas variáveis de ambiente do Vercel. É necessário entrar na conta Supabase; há limite de 20 gerações por dia por conta para evitar abuso e custos inesperados. A chave OpenAI nunca deve ser colocada no navegador nem no GitHub.</p><label class="field"><span>Modelo (opcional)</span><input value="Configurado no Vercel: OPENAI_MODEL" disabled></label><div class="callout-note">A assinatura do ChatGPT não inclui créditos da API. O uso da API é faturado separadamente pela OpenAI.</div></section>' +
+      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>Escolha sua IA</h2></div><span class="service-status ' + (aiSessionCredentials ? "configured" : "") + '">' + (aiSessionCredentials ? aiProviderLabel(aiSessionCredentials.provider) + " pronta" : "Chave necessária") + '</span></div><p>Antes de gerar roteiros, escolha OpenAI, Gemini ou Claude e informe sua própria chave de API. O uso é cobrado diretamente pelo serviço escolhido.</p><div class="ai-provider-status"><span class="live-dot"></span><span>' + (aiSessionCredentials ? "Chave ativa somente nesta aba · " + aiProviderLabel(aiSessionCredentials.provider) : "Nenhuma chave configurada nesta aba") + '</span></div><div class="button-group"><button class="button button-primary" data-action="configure-ai">' + (aiSessionCredentials ? "Trocar provedor ou chave" : "＋ Configurar chave de IA") + '</button>' + (aiSessionCredentials ? '<button class="button button-ghost" data-action="clear-ai-key">Esquecer chave</button>' : '') + '</div><p class="small muted">A chave é mantida apenas na memória desta aba e enviada ao servidor somente durante a geração. Ela não é salva no projeto, na nuvem ou no navegador; feche a aba para removê-la.</p><div class="callout-note">É necessário entrar no Supabase para aplicar o limite de 20 gerações por dia. Cada provedor pode exigir créditos ou faturamento próprios.</div></section>' +
       '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">ARMAZENAMENTO</span><h2>Dados deste dispositivo</h2></div></div><p class="muted">Atualmente há <b>' + state.projects.length + '</b> projeto(s) salvos neste navegador.</p><button class="button button-danger-ghost" data-action="clear-local">Apagar dados locais deste navegador</button><p class="small muted">Esta ação não apaga cópias já sincronizadas na nuvem.</p></section></div>';
+  }
+
+  function aiProviderLabel(provider) {
+    return ({ openai: "OpenAI", gemini: "Gemini", claude: "Claude" })[provider] || "IA";
+  }
+
+  function showAiProviderModal() {
+    const provider = aiSessionCredentials && aiSessionCredentials.provider || "openai";
+    openModal('<div class="modal-top"><div><span class="eyebrow">CONFIGURAÇÃO NECESSÁRIA</span><h2>Conecte sua IA</h2><p>Escolha um provedor e informe uma chave de API sua.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><form data-form="ai-provider" class="form-grid ai-key-form"><label class="field full"><span>Provedor de IA</span><select name="provider"><option value="openai" ' + (provider === "openai" ? "selected" : "") + '>OpenAI</option><option value="gemini" ' + (provider === "gemini" ? "selected" : "") + '>Google Gemini</option><option value="claude" ' + (provider === "claude" ? "selected" : "") + '>Anthropic Claude</option></select></label><label class="field full"><span>Chave de API</span><input name="apiKey" type="password" required minlength="10" autocomplete="new-password" spellcheck="false" placeholder="Cole sua chave de API" autofocus></label><div class="provider-key-note full"><b>A chave fica nesta aba.</b><span>Ela será enviada ao servidor somente para a geração e apagada ao fechar a aba. Não cole uma chave em um computador compartilhado.</span></div><div class="callout-note full">O provedor cobra o uso da API diretamente na conta dele. Entrar no ChatGPT, Gemini ou Claude não substitui uma chave de API.</div><div class="modal-actions full"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar nesta aba e continuar</button></div></form>');
+    const input = $('[name="apiKey"]', $("#modal-root"));
+    if (input) input.focus();
   }
 
   function showNewProjectModal() {
@@ -379,6 +394,12 @@
   async function generate(kind) {
     const project = currentProject();
     if (!project) return;
+    if (!aiSessionCredentials || !aiSessionCredentials.apiKey) {
+      pendingAiGeneration = kind;
+      showAiProviderModal();
+      notify("Configure uma chave de IA para continuar.", "info");
+      return;
+    }
     const episode = project.episodes.find((item) => item.id === activeEpisodeId);
     const button = $('[data-action="generate-' + (kind === "episode" ? "episode" : "project") + '"]');
     if (button) { button.disabled = true; button.dataset.oldText = button.textContent; button.textContent = "Preparando..."; }
@@ -393,10 +414,10 @@
     const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
-        body: JSON.stringify({ kind: kind, project: project, episode: episode || null })
+        body: JSON.stringify({ kind: kind, project: project, episode: episode || null, provider: aiSessionCredentials.provider, apiKey: aiSessionCredentials.apiKey })
       });
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || "Não foi possível gerar. Confira a configuração da API no Vercel.");
+      if (!response.ok) throw new Error(body.error || "Não foi possível gerar. Confira a chave e o provedor de IA.");
       if (kind === "episode") {
         if (!episode) throw new Error("Abra um episódio antes de gerar o roteiro.");
         episode.title = body.title || episode.title;
@@ -627,7 +648,12 @@
     const action = button.dataset.action;
     const project = currentProject();
     if (action === "new-project") return showNewProjectModal();
-    if (action === "close-modal") return closeModal();
+    if (action === "close-modal") {
+      if ($('[data-form="ai-provider"]')) pendingAiGeneration = null;
+      return closeModal();
+    }
+    if (action === "configure-ai") return showAiProviderModal();
+    if (action === "clear-ai-key") { aiSessionCredentials = null; render(); notify("Chave esquecida nesta aba.", "success"); return; }
     if (action === "navigate") { activeView = button.dataset.view; render(); return; }
     if (action === "open-project") return openProject(button.dataset.id);
     if (action === "switch-tab") { activeTab = button.dataset.tab; activeEpisodeId = null; activeSceneId = null; render(); return; }
@@ -642,6 +668,12 @@
     if (action === "add-source") return showSourceModal();
     if (action === "generate-next-episode") {
       if (!supabaseClient || !signedInUser) { notify("Conecte o Supabase e entre em Configurações antes de gerar com IA.", "error"); return; }
+      if (!aiSessionCredentials || !aiSessionCredentials.apiKey) {
+        pendingAiGeneration = "next-episode";
+        showAiProviderModal();
+        notify("Configure uma chave de IA para continuar.", "info");
+        return;
+      }
       addEpisode(); return generate("episode");
     }
     if (action === "save-version" && project) {
@@ -877,6 +909,27 @@
     event.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
     const type = form.dataset.form;
+    if (type === "ai-provider") {
+      const provider = String(data.provider || "");
+      const apiKey = String(data.apiKey || "").trim();
+      if (!["openai", "gemini", "claude"].includes(provider) || apiKey.length < 10 || apiKey.length > 512) {
+        notify("Escolha um provedor e informe uma chave de API válida.", "error");
+        return;
+      }
+      aiSessionCredentials = { provider, apiKey };
+      const pending = pendingAiGeneration;
+      pendingAiGeneration = null;
+      closeModal();
+      render();
+      notify("" + aiProviderLabel(provider) + " pronta nesta aba.", "success");
+      if (pending === "next-episode") {
+        if (!supabaseClient || !signedInUser) { notify("Entre na sua conta Supabase antes de gerar com IA.", "error"); return; }
+        addEpisode();
+        return generate("episode");
+      }
+      if (pending) return generate(pending);
+      return;
+    }
     if (type === "create-project") {
       closeModal(); createProject(data); return;
     }

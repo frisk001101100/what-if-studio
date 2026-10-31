@@ -7,7 +7,7 @@ What If Studio is a Portuguese (Brazil) creator workspace for planning short-for
 Before editing, inspect:
 - `README.md` for setup, deployment, integrations and known limitations.
 - `index.html`, `styles.css` and `app.js` for the current UI and application behavior.
-- `api/generate.js` for the server-side OpenAI generation flow.
+- `api/generate.js` for the authenticated server-side provider generation flow.
 - `supabase/schema.sql` for authentication, project storage, RLS and AI quota.
 - `vercel.json` and `package.json` for deployment/runtime configuration.
 
@@ -18,7 +18,7 @@ Do not assume this is a blank project. It already contains an MVP. Preserve work
 - `index.html`: app shell and entry point.
 - `styles.css`: responsive dark interface.
 - `app.js`: dashboard, project editor, episodes/scenes, characters, universe, polls, continuity, references, import/export, snapshots, local persistence and optional Supabase sync.
-- `api/generate.js`: Vercel serverless endpoint using the OpenAI Responses API. It validates a Supabase bearer session and enforces a daily generation quota.
+- `api/generate.js`: Vercel serverless endpoint for OpenAI, Gemini and Claude. It validates a Supabase bearer session and enforces a daily generation quota. Provider keys are supplied per request and are never logged or stored.
 - `supabase/schema.sql`: projects table with row-level security and a per-user daily AI-generation quota.
 - `vercel.json`: Vercel function and security headers.
 
@@ -34,7 +34,7 @@ Do not assume this is a blank project. It already contains an MVP. Preserve work
 - Manual snapshots and restore.
 - Browser local autosave.
 - Optional Supabase magic-link login and cloud sync.
-- Optional server-side AI generation for story packs and next episodes.
+- Optional server-side AI generation for story packs and next episodes with a provider key held in browser memory for the current tab.
 
 ## Visual direction
 Keep the existing visual identity coherent:
@@ -47,8 +47,8 @@ Keep the existing visual identity coherent:
 ## Engineering rules
 1. Make focused, incremental changes and preserve existing user data formats where possible.
 2. Keep the app usable locally without OpenAI or Supabase. Integrations are optional.
-3. Never put OpenAI API keys, Supabase service-role keys, access tokens or other secrets in frontend code, committed files, logs or client-visible responses.
-4. OpenAI calls must remain server-side in `api/generate.js`; never call the OpenAI API directly from browser code with a secret.
+3. Never put provider API keys, Supabase service-role keys, access tokens or other secrets in committed files, logs or client-visible responses. User-provided provider keys may exist in browser memory only for the current tab and must be sent to `api/generate.js` for one authenticated request.
+4. All OpenAI, Gemini and Claude calls must remain server-side in `api/generate.js`; never call a provider API directly from browser code with a key.
 5. Preserve Supabase Row Level Security and user isolation. Do not weaken policies to make a feature work.
 6. Validate and safely render user/model-generated content. Continue escaping untrusted values before inserting HTML.
 7. Keep generated story content appropriate for a general/teen audience: no explicit sexual content, graphic violence or self-harm descriptions.

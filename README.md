@@ -19,7 +19,7 @@ A local-first studio for creating short-form interactive stories where audience 
 - Generate the next episode using the poll result and the established continuity as context.
 - Automatic local saving in the current browser.
 - Optional Supabase magic-link login and cloud sync.
-- Optional server-side OpenAI generation through a Vercel Function.
+- Optional AI generation with an OpenAI, Gemini or Claude API key entered in the app.
 
 The app works locally without OpenAI or Supabase. Those services are optional integrations and need your own accounts and configuration.
 
@@ -37,13 +37,11 @@ Open the local URL printed by Vercel. The static app can also be previewed with 
 1. Import frisk001101100/what-if-studio from GitHub into Vercel.
 2. Choose Other as the framework preset. No build command is required; the app is served from the repository root.
 3. Add these Environment Variables in the Vercel project:
-   - OPENAI_API_KEY — secret API key, server-side only.
-   - OPENAI_MODEL — optional model override; defaults to gpt-5.5.
    - SUPABASE_URL — the Supabase project URL.
    - SUPABASE_ANON_KEY — the public anon/publishable key (never use service_role).
 4. Deploy. The generation endpoint is available at /api/generate.
 
-Never add an API key to app.js, index.html, a VITE_ variable, or any committed file. ChatGPT subscriptions and API billing are separate.
+Never add an API key to app.js, index.html, a VITE_ variable, or any committed file. Users configure their own provider key in the app before generating. The key stays in memory for the current browser tab, is sent to the server only for a generation request, and is never saved to project data, Supabase, or browser storage. Each provider bills API usage separately from its chat subscription.
 
 ## Configure Supabase cloud sync
 
@@ -53,14 +51,14 @@ Never add an API key to app.js, index.html, a VITE_ variable, or any committed f
 4. Add your deployed Vercel URL to the allowed redirect URLs.
 5. Open What If Studio → Configurações and enter the Supabase Project URL and public anon/publishable key.
 6. Enter your email and use the link sent to your inbox. Your projects will then sync to your account.
-7. The AI endpoint also requires this Supabase login and the three server environment variables above. The database enforces a limit of 20 AI generations per user per UTC day.
+7. To generate content, choose OpenAI, Gemini, or Claude from the app's **Configurar IA** button and enter an API key from that provider. Sign in to Supabase as well; the database enforces a limit of 20 AI generations per user per UTC day.
 
 The client uses only the public anon/publishable key. Row Level Security ensures users can access only rows whose user_id matches their authenticated account. Do not use or expose the Supabase service_role key.
 
 ## Architecture
 
 - index.html, styles.css, app.js: static browser application.
-- api/generate.js: server-side OpenAI Responses API proxy. The API key is read only from server environment variables.
+- api/generate.js: authenticated server-side proxy for OpenAI, Gemini and Claude. A user-provided API key is used for one request and is never logged or stored.
 - supabase/schema.sql: projects table and row-level security policies.
 - vercel.json: Vercel function and security-header configuration.
 
@@ -68,10 +66,10 @@ The client uses only the public anon/publishable key. Row Level Security ensures
 
 - Poll votes are entered manually. The app does not scrape social platforms or claim to read Instagram/TikTok poll results.
 - Cloud sync is optional and requires Supabase configuration.
-- AI generation is optional and requires OpenAI API billing and a Vercel environment variable.
+- AI generation is optional and requires an API key and billing with the selected provider, plus Supabase login for the daily quota.
 - There is no automatic publishing to social platforms yet.
 - Local data is stored in the current browser until cloud sync is configured. Export backups regularly.
 
 ## Safety and privacy
 
-Keep API secrets in the hosting provider's environment-variable settings. Do not commit .env files, service-role keys, private access tokens or personal data. Use platform-approved integrations for publishing and audience data.
+Keep API secrets out of source code and project backups. The app keeps the selected AI key in page memory only and clears it when the tab is closed. Do not commit .env files, service-role keys, private access tokens or personal data. Use platform-approved integrations for publishing and audience data.
