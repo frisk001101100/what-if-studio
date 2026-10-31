@@ -37,6 +37,7 @@ export default async function handler(req, res) {
       duration: String(project.duration || "").slice(0, 80),
       tone: String(project.tone || "").slice(0, 160),
       audience: String(project.audience || "Público geral").slice(0, 120),
+      pacing: String(project.pacing || "Dinâmico").slice(0, 100),
       world: project.world || {},
       characters: Array.isArray(project.characters) ? project.characters.slice(0, 20) : [],
       episodes: Array.isArray(project.episodes) ? project.episodes.slice(0, 12).map((item) => ({ title: item.title, summary: item.summary })) : [],
@@ -85,7 +86,7 @@ export default async function handler(req, res) {
       : [
           "Você é showrunner, editor de roteiro e designer de narrativas interativas.",
           "Responda somente com um objeto JSON válido, sem markdown ou texto fora do JSON.",
-          "Idioma: português brasileiro. Respeite a premissa e desenvolva um conceito original e filmável.",
+          "Idioma: português brasileiro. Respeite a premissa, o público-alvo e o ritmo narrativo, e desenvolva um conceito original e filmável.",
           "Crie um pacote com title, premise, setting, visualStyle, universe (lista de 3 a 6 regras), characters (3 a 5 objetos com name, role, description, appearance e voice), episodes (3 a 5 objetos com title, summary, script, caption, pinnedComment, storyPoll e scenes; cada cena com visual, imagePrompt, videoPrompt, audio, audioDirection, onScreen, duration e sfx), polls (1 a 3 objetos com question, options como lista de objetos {label}, consequence) e continuity (lista de fatos curtos).",
           "Cada episódio deve mover a trama e terminar com gancho. Pelo menos uma votação deve criar consequências narrativas diferentes.",
           "Mantenha a lógica interna consistente. Não apresente ficção como fato. Se o formato for histórico ou documental, marque pontos que precisem de checagem em vez de inventar fatos.",
