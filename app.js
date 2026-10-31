@@ -26,6 +26,7 @@
   let activeSceneId = null;
   let aiSessionCredentials = null;
   let pendingAiGeneration = null;
+  let videoRenderState = null;
   let supabaseClient = null;
   let signedInUser = null;
   let cloudSyncTimer = null;
@@ -84,6 +85,10 @@
   }
 
   function closeModal() {
+    if (videoRenderState && videoRenderState.recording) {
+      videoRenderState.cancelled = true;
+      if (videoRenderState.recorder.state !== "inactive") videoRenderState.recorder.stop();
+    }
     $("#modal-root").innerHTML = "";
   }
 
@@ -174,6 +179,17 @@
     else if (activeView === "publishing") root.innerHTML = renderPublishing();
     else if (activeView === "course") root.innerHTML = renderCourse();
     else root.innerHTML = renderDashboard();
+    if (activeView === "editor" && activeTab === "episodes" && activeEpisodeId) {
+      const tools = $(".video-editor-topline", root);
+      if (tools) {
+        const renderButton = document.createElement("button");
+        renderButton.type = "button";
+        renderButton.className = "button button-primary button-small";
+        renderButton.dataset.action = "render-video";
+        renderButton.textContent = "▣ Renderizar vídeo";
+        tools.appendChild(renderButton);
+      }
+    }
   }
 
   function renderCourse() {
@@ -322,6 +338,180 @@
       '<section class="panel video-scenes-panel"><div class="panel-heading"><div><span class="eyebrow">DECUPAGEM DETALHADA</span><h2>Cenas, prompts e áudio</h2><p class="muted small">Descreva o plano, o movimento, a voz e o texto que aparece em cada take.</p></div><button class="button button-secondary button-small" data-action="add-scene">＋ Adicionar cena</button></div>' + sceneCards + '</section></div>';
   }
 
+  function showVideoRenderer(episode) {
+    if (!episode || !Array.isArray(episode.scenes) || !episode.scenes.length) {
+      notify("Adicione pelo menos uma cena antes de montar o vídeo.", "error");
+      return;
+    }
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
+      notify("Este navegador não oferece gravação de vídeo. Atualize o Chrome ou tente em outro navegador.", "error");
+      return;
+    }
+    openModal('<div class="modal-top"><div><span class="eyebrow">VÍDEO GRÁFICO 9:16</span><h2>Montar vídeo</h2><p>Cria uma animação 2D com os textos e cenas do roteiro. Não usa filmagem real.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><div class="video-render-layout"><canvas id="video-render-canvas" width="540" height="960" aria-label="Prévia do vídeo gráfico"></canvas><div class="video-render-controls"><p>Os gráficos são ilustrativos e animados no navegador. A gravação será baixada em WebM.</p><span id="video-render-status" class="small muted">Pronto para montar · até 45 segundos</span><button class="button button-primary button-wide" data-action="start-video-render">Renderizar e baixar</button><a id="video-render-download" class="button button-secondary button-wide" hidden>Baixar novamente</a></div></div>');
+    const canvas = $("#video-render-canvas");
+    drawVideoGraphic(canvas.getContext("2d"), episode, episode.scenes[0], 0, 0, 0);
+  }
+
+  function drawVideoGraphic(ctx, episode, scene, sceneIndex, progress, overallProgress) {
+    const canvas = ctx.canvas;
+    const w = canvas.width, h = canvas.height;
+    const background = ctx.createLinearGradient(0, 0, w, h);
+    background.addColorStop(0, "#171326");
+    background.addColorStop(0.55, "#10121d");
+    background.addColorStop(1, "#0b1118");
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, w, h);
+    const glow = ctx.createRadialGradient(w * 0.76, h * 0.32, 15, w * 0.76, h * 0.32, w * 0.8);
+    glow.addColorStop(0, "rgba(137,106,255,.27)");
+    glow.addColorStop(1, "rgba(137,106,255,0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, w, h);
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#d1c8ff";
+    ctx.font = "600 20px Arial, sans-serif";
+    ctx.fillText("WHAT IF STUDIO", 42, 50);
+    ctx.fillStyle = "#9893ad";
+    ctx.font = "16px Arial, sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText("PARTE " + String(episode.number || 1).padStart(2, "0"), w - 42, 54);
+    ctx.textAlign = "left";
+
+    const chartX = 48, chartY = 180, chartW = w - 96, chartH = 220;
+    ctx.strokeStyle = "rgba(201,193,230,.14)";
+    ctx.lineWidth = 1;
+    for (let line = 0; line < 4; line++) {
+      const y = chartY + line * chartH / 3;
+      ctx.beginPath(); ctx.moveTo(chartX, y); ctx.lineTo(chartX + chartW, y); ctx.stroke();
+    }
+    ctx.fillStyle = "#aaa3bd";
+    ctx.font = "14px Arial, sans-serif";
+    ctx.fillText("ARCO DA HISTÓRIA · ILUSTRATIVO", chartX, chartY - 30);
+    const points = 7;
+    const active = Math.max(1, Math.ceil(progress * (points - 1)));
+    const vals = Array.from({ length: points }, (_, index) => 0.72 - index * 0.067 + Math.sin(index * 1.35 + progress * 3) * 0.08);
+    ctx.beginPath();
+    for (let index = 0; index < active; index++) {
+      const x = chartX + index * chartW / (points - 1);
+      const y = chartY + vals[index] * chartH;
+      if (!index) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#a995ff";
+    ctx.lineWidth = 5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    const endIndex = active - 1;
+    ctx.beginPath();
+    ctx.arc(chartX + endIndex * chartW / (points - 1), chartY + vals[endIndex] * chartH, 9, 0, Math.PI * 2);
+    ctx.fillStyle = "#80e0d2";
+    ctx.fill();
+
+    const title = String(scene.onScreen || scene.title || episode.title || "E se...? ").trim();
+    const wrapCanvasText = (text, x, y, maxWidth, lineHeight, maxLines) => {
+      const words = text.split(/\s+/);
+      let line = "", lineNo = 0;
+      for (const word of words) {
+        const test = line ? line + " " + word : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          ctx.fillText(line, x, y + lineNo * lineHeight);
+          line = word; lineNo += 1;
+          if (lineNo >= maxLines) break;
+        } else line = test;
+      }
+      if (line && lineNo < maxLines) ctx.fillText(lineNo === maxLines - 1 && words.length > 8 ? line.slice(0, 55) + "…" : line, x, y + lineNo * lineHeight);
+    };
+    ctx.fillStyle = "#f5f2ff";
+    ctx.font = "700 47px Arial, sans-serif";
+    wrapCanvasText(title, 48, 468, w - 96, 58, 3);
+    ctx.fillStyle = "#c4bfd2";
+    ctx.font = "23px Arial, sans-serif";
+    wrapCanvasText(String(scene.visual || scene.videoPrompt || episode.summary || "Uma escolha muda o rumo da história."), 50, 660, w - 100, 34, 4);
+    ctx.fillStyle = "#98a1b6";
+    ctx.font = "15px Arial, sans-serif";
+    ctx.fillText("CENA " + String(sceneIndex + 1).padStart(2, "0") + " / " + String(episode.scenes.length).padStart(2, "0"), 50, h - 114);
+    ctx.fillText(sceneIndex === episode.scenes.length - 1 && episode.storyPoll ? "VOTE NOS COMENTÁRIOS · A / B" : "ANIMAÇÃO 2D · GRÁFICO ILUSTRATIVO", 50, h - 84);
+    ctx.fillStyle = "rgba(255,255,255,.18)";
+    ctx.fillRect(0, h - 12, w, 12);
+    ctx.fillStyle = "#9e88ff";
+    ctx.fillRect(0, h - 12, w * Math.max(0, Math.min(1, overallProgress)), 12);
+  }
+
+  async function startVideoRender(button) {
+    if (videoRenderState && videoRenderState.recording) return;
+    const project = currentProject();
+    const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
+    const canvas = $("#video-render-canvas");
+    const status = $("#video-render-status");
+    if (!episode || !canvas || !status) return;
+    const scenes = episode.scenes.slice(0, 10);
+    const durations = scenes.map((scene) => Math.max(2.5, Math.min(5, Number(scene.duration) || 4)));
+    const rawTotal = durations.reduce((sum, duration) => sum + duration, 0);
+    const scale = rawTotal > 45 ? 45 / rawTotal : 1;
+    const totalDuration = rawTotal * scale;
+    const stream = canvas.captureStream(24);
+    const supportedTypes = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+    const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    if (!mimeType) {
+      stream.getTracks().forEach((track) => track.stop());
+      status.textContent = "Este navegador não reconhece um formato de vídeo compatível.";
+      return;
+    }
+    let recorder;
+    try { recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1800000 }); }
+    catch (_) {
+      stream.getTracks().forEach((track) => track.stop());
+      status.textContent = "Não foi possível iniciar a gravação neste dispositivo. Atualize o navegador e tente novamente.";
+      return;
+    }
+    const chunks = [];
+    let cancelled = false;
+    recorder.ondataavailable = (event) => { if (event.data && event.data.size) chunks.push(event.data); };
+    const stopped = new Promise((resolve) => { recorder.onstop = resolve; });
+    videoRenderState = { recorder, recording: true, get cancelled() { return cancelled; }, set cancelled(value) { cancelled = value; } };
+    const originalLabel = button.textContent;
+    button.disabled = true;
+    button.textContent = "Renderizando…";
+    const downloadLink = $("#video-render-download");
+    if (downloadLink) { downloadLink.hidden = true; downloadLink.removeAttribute("href"); }
+    try { recorder.start(400); }
+    catch (_) {
+      stream.getTracks().forEach((track) => track.stop());
+      videoRenderState = null;
+      button.disabled = false;
+      button.textContent = originalLabel;
+      status.textContent = "O navegador recusou iniciar a gravação. Tente novamente ou use Chrome atualizado.";
+      return;
+    }
+    const startedAt = performance.now();
+    const paint = (now) => {
+      if (!videoRenderState || cancelled) { if (recorder.state !== "inactive") recorder.stop(); return; }
+      const elapsed = Math.min(totalDuration, (now - startedAt) / 1000);
+      let cursor = 0, sceneIndex = 0;
+      while (sceneIndex < scenes.length - 1 && elapsed >= cursor + durations[sceneIndex] * scale) {
+        cursor += durations[sceneIndex] * scale; sceneIndex += 1;
+      }
+      const sceneDuration = durations[sceneIndex] * scale;
+      const sceneProgress = Math.min(1, Math.max(0, (elapsed - cursor) / sceneDuration));
+      drawVideoGraphic(canvas.getContext("2d"), episode, scenes[sceneIndex], sceneIndex, sceneProgress, elapsed / totalDuration);
+      status.textContent = "Renderizando cena " + (sceneIndex + 1) + " de " + scenes.length + " · " + Math.round(elapsed / totalDuration * 100) + "%";
+      if (elapsed >= totalDuration) { if (recorder.state !== "inactive") recorder.stop(); }
+      else requestAnimationFrame(paint);
+    };
+    requestAnimationFrame(paint);
+    await stopped;
+    stream.getTracks().forEach((track) => track.stop());
+    if (!cancelled && chunks.length) {
+      const blob = new Blob(chunks, { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const slug = String(episode.title || "episodio").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "episodio";
+      const link = $("#video-render-download");
+      if (link) { link.href = url; link.download = "what-if-" + slug + ".webm"; link.textContent = "Baixar vídeo no aparelho"; link.hidden = false; }
+      status.textContent = "Vídeo pronto · " + (blob.size / 1024 / 1024).toFixed(1) + " MB. Toque em Baixar vídeo para salvar.";
+    } else if (status) status.textContent = "Renderização cancelada.";
+    videoRenderState = null;
+    if (button.isConnected) { button.disabled = false; button.textContent = originalLabel; }
+  }
+
   function renderCharacters(project) {
     return '<div class="section-heading"><div><span class="eyebrow">ELENCO</span><h2>Personagens</h2><p class="muted">Registre aparência, personalidade, voz e objetivos para manter consistência.</p></div><button class="button button-primary" data-action="add-character">＋ Personagem</button></div>' +
       (project.characters.length ? '<div class="character-grid">' + project.characters.map((character) => '<article class="character-card"><div class="character-avatar">' + escapeHtml((character.name || "?").slice(0, 1).toUpperCase()) + '</div><div class="character-card-heading"><div><h3>' + escapeHtml(character.name) + '</h3><span class="project-tag">' + escapeHtml(character.role || "Personagem") + '</span></div><button class="icon-button danger-text" data-action="delete-character" data-id="' + escapeHtml(character.id) + '">×</button></div><p>' + escapeHtml(character.description || "Sem descrição.") + '</p><div class="character-detail"><b>Aparência</b><span>' + escapeHtml(character.appearance || "Não definida") + '</span></div><div class="character-detail"><b>Voz / jeito de falar</b><span>' + escapeHtml(character.voice || "Não definido") + '</span></div></article>').join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">◎</div><h3>Quem move esta história?</h3><p>Crie personagens com objetivos, conflitos e características visuais consistentes.</p><button class="button button-primary" data-action="add-character">Criar personagem</button></div>');
@@ -375,11 +565,12 @@
     const settings = getSettings();
     const isConfigured = Boolean(settings.supabaseUrl && settings.supabaseAnon);
     return '<div class="page-stack"><div class="section-heading"><div><span class="eyebrow">PREFERÊNCIAS</span><h1>Configurações</h1><p class="muted">Conecte os serviços opcionais. O estúdio continua funcionando localmente sem eles.</p></div></div>' +
-      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">BACKUP NA NUVEM</span><h2>Supabase</h2></div><span class="service-status ' + (signedInUser ? "online" : isConfigured ? "configured" : "") + '">' + (signedInUser ? "Conectado" : isConfigured ? "Configurado" : "Opcional") + '</span></div><p class="muted">Este projeto já vem conectado ao Supabase. URL e chave publishable estão pré-configuradas; você só precisa entrar com seu e-mail para ativar a sincronização na nuvem.</p><form data-form="settings" class="form-grid">' +
+      '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">CONTA E BACKUP</span><h2>Entrar com Google</h2></div><span class="service-status ' + (signedInUser ? "online" : isConfigured ? "configured" : "") + '">' + (signedInUser ? "Conectado" : isConfigured ? "Pronto para configurar" : "Opcional") + '</span></div><p class="muted">Use sua conta Google para entrar sem depender de um link por e-mail. Seus projetos continuam sincronizados com a conta autenticada e protegidos pelas regras atuais do banco.</p><form data-form="settings" class="form-grid">' +
+      '<label class="field"><span>Nome de exibição</span><input name="nickname" maxlength="40" value="' + escapeHtml(settings.nickname || "Kai") + '" placeholder="Kai"></label>' +
       '<label class="field"><span>Project URL</span><input name="supabaseUrl" type="url" placeholder="https://seu-projeto.supabase.co" value="' + escapeHtml(settings.supabaseUrl || "") + '"></label>' +
       '<label class="field"><span>Anon / publishable key</span><input name="supabaseAnon" type="password" autocomplete="off" placeholder="Chave pública do Supabase" value="' + escapeHtml(settings.supabaseAnon || "") + '"></label><div class="form-actions"><button class="button button-primary" type="submit">Salvar configuração</button><span class="small muted">A chave pública fica no navegador e depende das políticas RLS do banco.</span></div></form>' +
-      '<div class="cloud-account">' + (signedInUser ? '<div><b>Conectado como ' + escapeHtml(signedInUser.email || "usuário") + '</b><p class="small muted">Os projetos serão sincronizados com sua conta.</p></div><button class="button button-secondary" data-action="cloud-signout">Sair</button><button class="button button-primary" data-action="cloud-sync">Sincronizar agora</button>' : '<form data-form="cloud-login" class="login-form"><label class="field"><span>Seu e-mail</span><input name="email" type="email" required placeholder="voce@exemplo.com"></label><button class="button button-secondary" type="submit" ' + (isConfigured ? "" : "disabled") + '>Enviar link de acesso</button></form>') + '</div>' +
-      '<p class="small muted">O schema e as políticas por usuário já foram instalados. Depois que o site estiver publicado, a URL final será adicionada à lista de redirecionamentos permitidos do Supabase.</p></section>' +
+      '<div class="cloud-account">' + (signedInUser ? '<div><b>' + escapeHtml(settings.nickname || "Kai") + ' · ' + escapeHtml(signedInUser.email || signedInUser.user_metadata?.full_name || "Google") + '</b><p class="small muted">Sincronização ativa nesta conta.</p></div><button class="button button-secondary" data-action="cloud-signout">Sair</button><button class="button button-primary" data-action="cloud-sync">Sincronizar agora</button>' : '<div><b>Entre para sincronizar</b><p class="small muted">O botão usa o provedor Google configurado para o projeto.</p></div><button class="button button-primary" data-action="cloud-google" ' + (isConfigured ? "" : "disabled") + '>◉ Continuar com Google</button>') + '</div>' +
+      '<details class="setup-details"><summary>Configuração técnica da conta</summary><p class="small muted">Para ativar o Google, o proprietário precisa habilitar o provedor em Supabase Auth e cadastrar um OAuth Client ID e Secret do Google. Adicione esta origem permitida: <code>' + escapeHtml(window.location.origin) + '</code>. Callback do Google: <code>' + escapeHtml((settings.supabaseUrl || "https://seu-projeto.supabase.co").replace(/\/$/, "")) + '/auth/v1/callback</code>. Não cole segredos nesta tela.</p></details></section>' +
       '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">GERAÇÃO DE CONTEÚDO</span><h2>Escolha sua IA</h2></div><span class="service-status ' + (aiSessionCredentials ? "configured" : "") + '">' + (aiSessionCredentials ? aiProviderLabel(aiSessionCredentials.provider) + " pronta" : "Chave necessária") + '</span></div><p>Antes de gerar roteiros, escolha OpenAI, Gemini ou Claude e informe sua própria chave de API. O uso é cobrado diretamente pelo serviço escolhido.</p><div class="ai-provider-status"><span class="live-dot"></span><span>' + (aiSessionCredentials ? "Chave ativa somente nesta aba · " + aiProviderLabel(aiSessionCredentials.provider) : "Nenhuma chave configurada nesta aba") + '</span></div><div class="button-group"><button class="button button-primary" data-action="configure-ai">' + (aiSessionCredentials ? "Trocar provedor ou chave" : "＋ Configurar chave de IA") + '</button>' + (aiSessionCredentials ? '<button class="button button-ghost" data-action="clear-ai-key">Esquecer chave</button>' : '') + '</div><p class="small muted">A chave é mantida apenas na memória desta aba e enviada ao servidor somente durante a geração. Ela não é salva no projeto, na nuvem ou no navegador; feche a aba para removê-la.</p><div class="callout-note">É necessário entrar no Supabase para aplicar o limite de 20 gerações por dia. Cada provedor pode exigir créditos ou faturamento próprios.</div></section>' +
       '<section class="panel settings-panel"><div class="panel-heading"><div><span class="eyebrow">ARMAZENAMENTO</span><h2>Dados deste dispositivo</h2></div></div><p class="muted">Atualmente há <b>' + state.projects.length + '</b> projeto(s) salvos neste navegador.</p><button class="button button-danger-ghost" data-action="clear-local">Apagar dados locais deste navegador</button><p class="small muted">Esta ação não apaga cópias já sincronizadas na nuvem.</p></section></div>';
   }
@@ -629,6 +820,23 @@
     else notify("Link de acesso enviado. Confira sua caixa de entrada.", "success");
   }
 
+  async function signInWithGoogle() {
+    if (!supabaseClient) {
+      notify("A conta ainda não está configurada. Confira as instruções logo abaixo do botão.", "error");
+      return;
+    }
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin }
+    });
+    if (error) {
+      console.error("Google sign-in could not start.", error.message);
+      notify(/provider.*not enabled|unsupported provider/i.test(error.message)
+        ? "O login Google ainda não foi habilitado no painel Supabase. Siga as instruções desta tela."
+        : "Não foi possível iniciar o login Google. Confira a configuração OAuth e a URL de retorno.", "error");
+    }
+  }
+
   function downloadFile(name, contents, mime) {
     const blob = new Blob([contents], { type: mime || "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -689,6 +897,11 @@
       return closeModal();
     }
     if (action === "configure-ai") return showAiProviderModal();
+    if (action === "render-video") {
+      const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
+      return showVideoRenderer(episode);
+    }
+    if (action === "start-video-render") return startVideoRender(button);
     if (action === "clear-ai-key") { aiSessionCredentials = null; render(); notify("Chave esquecida nesta aba.", "success"); return; }
     if (action === "navigate") { activeView = button.dataset.view; render(); return; }
     if (action === "copy-course-link") {
@@ -846,6 +1059,7 @@
     if (action === "import-json") { const input = $('[data-import-file]'); if (input) input.click(); return; }
     if (action === "export") return exportProject(button.dataset.format);
     if (action === "cloud-sync") return syncCloud(true);
+    if (action === "cloud-google") return signInWithGoogle();
     if (action === "cloud-signout" && supabaseClient) {
       const { error } = await supabaseClient.auth.signOut();
       if (error) notify(error.message, "error"); else { signedInUser = null; render(); notify("Sessão encerrada.", "success"); }
@@ -1074,6 +1288,7 @@
     }
     if (type === "settings") {
       const settings = getSettings();
+      settings.nickname = String(data.nickname || "Kai").trim().slice(0, 40) || "Kai";
       settings.supabaseUrl = String(data.supabaseUrl || "").trim().replace(/\/$/, "");
       settings.supabaseAnon = String(data.supabaseAnon || "").trim();
       saveSettings(settings);

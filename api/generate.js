@@ -124,7 +124,7 @@ export default async function handler(req, res) {
     } else {
       endpoint = "https://api.anthropic.com/v1/messages";
       providerHeaders["x-api-key"] = apiKey;
-      providerHeaders["anthropic-version"] = "2026-10-21";
+      providerHeaders["anthropic-version"] = "2023-06-01";
       providerRequest = {
         model: "claude-haiku-5-5",
         max_tokens: 5500,

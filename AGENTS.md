@@ -33,8 +33,9 @@ Do not assume this is a blank project. It already contains an MVP. Preserve work
 - JSON/Markdown/TXT/SRT export; JSON import as a separate project.
 - Manual snapshots and restore.
 - Browser local autosave.
-- Optional Supabase magic-link login and cloud sync.
+- Optional Supabase Google OAuth login and per-user cloud sync; the project retains Supabase for its existing RLS-protected storage.
 - Optional server-side AI generation for story packs and next episodes with a provider key held in browser memory for the current tab.
+- Browser-side WebM export of short 9:16 motion graphics made from episode scene text and illustrative animated charts. It does not generate image/video footage or audio.
 
 ## Visual direction
 Keep the existing visual identity coherent:
@@ -55,6 +56,7 @@ Keep the existing visual identity coherent:
 8. Do not claim social-platform publishing, analytics or poll ingestion exists unless it is actually implemented through supported APIs.
 9. Update `README.md` when setup, environment variables, features or limitations change.
 10. Before finishing, run the checks available in the repo. If no automated test suite exists, perform relevant manual checks and clearly state what was and was not tested.
+11. Instagram publishing and analytics are not implemented; do not imply Meta account authorization, comment ingestion, or automatic threshold-based publishing exists until it is wired and verified.
 
 ## Setup and deployment
 Follow `README.md`. The documented local development command is `npm install` followed by `npx vercel dev`. Vercel environment variables are documented there. Supabase setup requires running `supabase/schema.sql`.
