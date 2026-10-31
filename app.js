@@ -331,7 +331,7 @@
       notify("Este navegador não oferece gravação de vídeo. Atualize o Chrome ou tente em outro navegador.", "error");
       return;
     }
-    openModal('<div class="modal-top"><div><span class="eyebrow">VÍDEO GRÁFICO 9:16</span><h2>Montar vídeo</h2><p>Cria uma animação 2D com os textos e cenas do roteiro. Não usa filmagem real.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><div class="video-render-layout"><canvas id="video-render-canvas" width="540" height="960" aria-label="Prévia do vídeo gráfico"></canvas><div class="video-render-controls"><p>Os gráficos são ilustrativos e animados no navegador. A gravação será baixada em WebM.</p><span id="video-render-status" class="small muted">Pronto para montar · até 45 segundos</span><button class="button button-primary button-wide" data-action="start-video-render">Renderizar e baixar</button><a id="video-render-download" class="button button-secondary button-wide" hidden>Baixar novamente</a></div></div>');
+    openModal('<div class="modal-top"><div><span class="eyebrow">ESTÚDIO DE VÍDEO · 9:16</span><h2>Montar seu Reel</h2><p>Gráficos animados, narrativa, legendas por cena e trilha instrumental criada no navegador.</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="Fechar">×</button></div><div class="video-render-layout"><canvas id="video-render-canvas" width="540" height="960" aria-label="Prévia do vídeo gráfico"></canvas><div class="video-render-controls"><div class="render-feature"><b>✳ Gráfico animado</b><span>Composição original vertical, sem filmagem de banco.</span></div><div class="render-feature"><b>CC Legendas</b><span>Usa a narração de cada cena como texto na tela.</span></div><div class="render-feature"><b>♫ Trilha e transições</b><span>Áudio instrumental sintetizado no próprio navegador.</span></div><label class="field render-audio-field"><span>Arquivo de voz (opcional)</span><input id="video-narration-file" type="file" accept="audio/*"></label><p class="small muted">O áudio enviado é misturado ao vídeo a partir do início. Sem arquivo, o vídeo usa apenas trilha e efeitos sintetizados.</p><span id="video-render-status" class="small muted">Pronto para montar · até 45 segundos</span><button class="button button-primary button-wide" data-action="start-video-render">Renderizar vídeo com som</button><a id="video-render-download" class="button button-secondary button-wide" hidden>Baixar vídeo</a></div></div>');
     const canvas = $("#video-render-canvas");
     drawVideoGraphic(canvas.getContext("2d"), episode, episode.scenes[0], 0, 0, 0);
   }
@@ -410,6 +410,21 @@
     ctx.fillStyle = "#c4bfd2";
     ctx.font = "23px Arial, sans-serif";
     wrapCanvasText(String(scene.visual || scene.videoPrompt || episode.summary || "Uma escolha muda o rumo da história."), 50, 660, w - 100, 34, 4);
+    const caption = String(scene.audio || scene.onScreen || "").trim();
+    if (caption) {
+      const lines = [];
+      let line = "";
+      caption.split(/\s+/).forEach((word) => {
+        const next = line ? line + " " + word : word;
+        if (ctx.measureText(next).width > w - 112 && line) { lines.push(line); line = word; } else line = next;
+      });
+      if (line) lines.push(line);
+      const visible = lines.slice(0, 3);
+      ctx.fillStyle = "rgba(6,8,15,.86)";
+      ctx.beginPath(); ctx.roundRect(34, 700, w - 68, visible.length * 34 + 26, 14); ctx.fill();
+      ctx.fillStyle = "#ffffff"; ctx.font = "600 22px Arial, sans-serif";
+      visible.forEach((captionLine, index) => ctx.fillText(captionLine, 52, 712 + index * 32));
+    }
     ctx.fillStyle = "#98a1b6";
     ctx.font = "15px Arial, sans-serif";
     ctx.fillText("CENA " + String(sceneIndex + 1).padStart(2, "0") + " / " + String(episode.scenes.length).padStart(2, "0"), 50, h - 114);
@@ -440,8 +455,30 @@
     const rawTotal = durations.reduce((sum, duration) => sum + duration, 0);
     const scale = rawTotal > 45 ? 45 / rawTotal : 1;
     const totalDuration = rawTotal * scale;
-    let stream;
-    try { stream = canvas.captureStream(24); }
+    let stream, audioContext = null, audioBus = null;
+    try {
+      const videoStream = canvas.captureStream(24);
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        audioContext = new AudioContextClass();
+        await audioContext.resume();
+        const destination = audioContext.createMediaStreamDestination();
+        const musicGain = audioContext.createGain(); musicGain.gain.value = 0.045; musicGain.connect(destination); audioBus = musicGain;
+        const narrationFile = $("#video-narration-file")?.files?.[0];
+        if (narrationFile) {
+          const narration = await audioContext.decodeAudioData(await narrationFile.arrayBuffer());
+          const narrationSource = audioContext.createBufferSource();
+          const narrationGain = audioContext.createGain(); narrationGain.gain.value = 0.8;
+          narrationSource.buffer = narration; narrationSource.connect(narrationGain).connect(destination); narrationSource.start();
+        }
+        [110, 164.81, 220].forEach((frequency, index) => {
+          const oscillator = audioContext.createOscillator(); const gain = audioContext.createGain();
+          oscillator.type = index === 1 ? "sine" : "triangle"; oscillator.frequency.value = frequency;
+          gain.gain.value = index === 0 ? 0.26 : 0.11; oscillator.connect(gain).connect(musicGain); oscillator.start();
+        });
+        stream = new MediaStream([...videoStream.getVideoTracks(), ...destination.stream.getAudioTracks()]);
+      } else stream = videoStream;
+    }
     catch (_) {
       status.textContent = "Não foi possível capturar a animação neste navegador. Tente outro navegador atualizado.";
       return;
@@ -480,6 +517,7 @@
       return;
     }
     const startedAt = performance.now();
+    let lastSceneIndex = -1;
     const paint = (now) => {
       if (!videoRenderState || cancelled) { if (recorder.state !== "inactive") recorder.stop(); return; }
       const elapsed = Math.min(totalDuration, (now - startedAt) / 1000);
@@ -488,6 +526,18 @@
         cursor += durations[sceneIndex] * scale; sceneIndex += 1;
       }
       const sceneDuration = durations[sceneIndex] * scale;
+      if (sceneIndex !== lastSceneIndex) {
+        lastSceneIndex = sceneIndex;
+        if (audioContext) {
+          const tone = audioContext.createOscillator(); const envelope = audioContext.createGain();
+          tone.type = "sine"; tone.frequency.setValueAtTime(660, audioContext.currentTime);
+          tone.frequency.exponentialRampToValueAtTime(440, audioContext.currentTime + 0.2);
+          envelope.gain.setValueAtTime(0.0001, audioContext.currentTime);
+          envelope.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
+          envelope.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.25);
+          tone.connect(envelope).connect(audioBus || audioContext.destination); tone.start(); tone.stop(audioContext.currentTime + 0.26);
+        }
+      }
       const sceneProgress = Math.min(1, Math.max(0, (elapsed - cursor) / sceneDuration));
       drawVideoGraphic(canvas.getContext("2d"), episode, scenes[sceneIndex], sceneIndex, sceneProgress, elapsed / totalDuration);
       status.textContent = "Renderizando cena " + (sceneIndex + 1) + " de " + scenes.length + " · " + Math.round(elapsed / totalDuration * 100) + "%";
@@ -497,6 +547,7 @@
     requestAnimationFrame(paint);
     await stopped;
     stream.getTracks().forEach((track) => track.stop());
+    if (audioContext && audioContext.state !== "closed") await audioContext.close().catch(() => {});
     if (!cancelled && chunks.length) {
       const blob = new Blob(chunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
