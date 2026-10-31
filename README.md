@@ -13,7 +13,10 @@ A local-first studio for creating short-form interactive stories where audience 
 - Audience polls with multiple options, manual vote counting and narrative consequences.
 - Continuity log for established facts, audience decisions, secrets and consequences.
 - Source/reference tracker with verification status and link per claim.
-- Export project as JSON, Markdown, TXT or SRT.
+- Export project as JSON, Markdown, TXT or SRT, and import JSON backups as separate projects.
+- Manual version snapshots with restore and a maximum of 20 saved checkpoints per project.
+- Per-option poll consequences that are copied into continuity when the winning branch is selected.
+- Generate the next episode using the poll result and the established continuity as context.
 - Automatic local saving in the current browser.
 - Optional Supabase magic-link login and cloud sync.
 - Optional server-side OpenAI generation through a Vercel Function.
