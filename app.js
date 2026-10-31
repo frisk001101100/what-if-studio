@@ -775,7 +775,7 @@
           if (storyboardTitle) storyboardTitle.textContent = target.value || "Cena";
         }
         if (target.dataset.sceneField === "onScreen" || target.dataset.sceneField === "visual") {
-          if (storyboardCaption) storyboardCaption.textContent = target.value || (target.dataset.sceneField === "onScreen" ? scene.visual : scene.onScreen) || "Sem descrição visual";
+          if (storyboardCaption) storyboardCaption.textContent = scene.onScreen || scene.visual || "Sem descrição visual";
         }
         if (target.dataset.sceneField === "duration") {
           const duration = Math.max(1, Number(target.value) || 8);
