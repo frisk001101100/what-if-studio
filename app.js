@@ -6,7 +6,7 @@
   const SETTINGS_KEY = "what-if-studio.settings.v1";
   const $ = (selector, root) => (root || document).querySelector(selector);
   const $$ = (selector, root) => Array.from((root || document).querySelectorAll(selector));
-  const uid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : "id-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+  const uid = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => { const random = Math.random() * 16 | 0; return (char === "x" ? random : (random & 3 | 8)).toString(16); }));
   const escapeHtml = (value) => String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const dateLabel = (value) => {
     try { return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }); }
@@ -532,7 +532,10 @@
     if (format === "txt" || format === "markdown") {
       const lines = ["# " + project.title, "", project.premise, "", "## Universo", project.world.setting || "", ...(project.world.rules || []).map((rule) => "- " + rule), "", "## Personagens"];
       project.characters.forEach((character) => lines.push("### " + character.name, character.role, character.description, "Aparência: " + character.appearance, "Voz: " + character.voice, ""));
-      project.episodes.forEach((episode) => lines.push("## Episódio " + episode.number + " — " + episode.title, episode.summary, "", episode.script, ""));
+      project.episodes.forEach((episode) => {
+        lines.push("## Episódio " + episode.number + " — " + episode.title, episode.summary, "", episode.script, "", "Legenda: " + (episode.caption || ""), "Comentário fixado: " + (episode.pinnedComment || ""), "Enquete para Stories: " + (episode.storyPoll || ""), "");
+        (episode.scenes || []).forEach((scene, index) => lines.push("### Cena " + (index + 1) + " — " + scene.title, "Visual: " + (scene.visual || ""), "Prompt de imagem: " + (scene.imagePrompt || ""), "Prompt de vídeo: " + (scene.videoPrompt || ""), "Áudio: " + (scene.audio || ""), "Direção de áudio: " + (scene.audioDirection || ""), "Texto na tela: " + (scene.onScreen || ""), "Duração: " + (scene.duration || 0) + "s", "Som: " + (scene.sfx || ""), ""));
+      });
       project.polls.forEach((poll) => lines.push("## Enquete", poll.question, ...(poll.options || []).map((option) => "- " + option.label + " (" + option.votes + " votos)"), "Consequência: " + poll.consequence, ""));
       project.continuity.forEach((entry) => lines.push("## Continuidade — " + entry.type, entry.text, ""));
       (project.sources || []).forEach((source) => lines.push("## Fonte — " + source.title, source.claim, "URL: " + source.url, "Estado: " + source.status, ""));
