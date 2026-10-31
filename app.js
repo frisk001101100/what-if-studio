@@ -519,6 +519,8 @@
     try {
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) throw new Error("Este navegador não oferece áudio para o render. Atualize o Chrome e tente novamente.");
+      audioContext = new AudioContextClass();
+      await audioContext.resume();
       const clips = [];
       for (let index = 0; index < scenes.length; index += 1) {
         status.textContent = "Gerando voz da cena " + (index + 1) + " de " + scenes.length + "…";
@@ -526,14 +528,13 @@
         const voiceName = provider === "openai" ? "coral" : "Kore";
         const blob = await requestNarration(provider, credentials, texts[index], voiceStyle, voiceName, abortController.signal);
         if (videoRenderState.cancelled) throw new Error("Renderização cancelada.");
-        const clip = await audioContextDecode(blob, AudioContextClass);
+        const clip = await audioContext.decodeAudioData(await blob.arrayBuffer());
         clips.push(clip);
       }
       const durations = clips.map((clip, index) => Math.max(2.8, Number(scenes[index].duration) || 4, clip.duration + 0.45));
       const totalDuration = durations.reduce((sum, duration) => sum + duration, 0);
       if (totalDuration > 90) throw new Error("O vídeo passou de 90 segundos com as falas geradas. Encurte o roteiro e tente de novo.");
       status.textContent = "Preparando gravação do vídeo…";
-      audioContext = new AudioContextClass();
       await audioContext.resume();
       const videoStream = canvas.captureStream(24);
       const destination = audioContext.createMediaStreamDestination();
@@ -615,12 +616,6 @@
       videoRenderState = null;
       if (button.isConnected) { button.disabled = false; button.textContent = originalLabel; }
     }
-  }
-
-  async function audioContextDecode(blob, AudioContextClass) {
-    const context = new AudioContextClass();
-    try { return await context.decodeAudioData(await blob.arrayBuffer()); }
-    finally { await context.close().catch(() => {}); }
   }
 
   function renderCharacters(project) {
