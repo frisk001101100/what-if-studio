@@ -6,6 +6,7 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     if (JSON.stringify(body).length > 100000) return res.status(413).json({ error: "O projeto é grande demais para uma única geração." });
+    if (body.kind === "voice") return await generateVoice(res, body);
     const kind = body.kind;
     const project = body.project || {};
     const episode = body.episode || null;
@@ -135,6 +136,56 @@ export default async function handler(req, res) {
     console.error("Generation function failed.");
     return res.status(500).json({ error: "Erro interno ao gerar conteúdo. Tente novamente." });
   }
+}
+
+async function generateVoice(res, body) {
+  const provider = String(body.provider || "");
+  const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+  const text = typeof body.text === "string" ? body.text.trim().slice(0, 1200) : "";
+  const style = typeof body.style === "string" ? body.style.trim().slice(0, 240) : "Narração clara em português brasileiro, com ritmo envolvente.";
+  if (!["openai", "gemini"].includes(provider) || apiKey.length < 10 || apiKey.length > 512 || !text) {
+    return res.status(400).json({ error: "Escolha OpenAI ou Gemini, informe uma chave válida e escreva a narração da cena." });
+  }
+
+  let response;
+  let mimeType;
+  if (provider === "openai") {
+    response = await fetch("https://api.openai.com/v1/audio/speech", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-4o-mini-tts", voice: String(body.voice || "coral"), input: text, instructions: style, response_format: "mp3" })
+    });
+    mimeType = "audio/mpeg";
+  } else {
+    response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
+      method: "POST",
+      headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gemini-3.8-flash-tts",
+        input: [{ type: "user_input", content: [{ type: "text", text, annotations: [{ type: "speech_metadata", style }] }] }],
+        response_format: { type: "audio" },
+        generation_config: { speech_config: [{ voice: String(body.voice || "Kore") }] }
+      })
+    });
+    mimeType = "audio/wav";
+  }
+
+  if (!response.ok) {
+    console.error("Narration provider request failed:", provider, response.status);
+    if ([401, 403].includes(response.status)) return res.status(401).json({ error: "A chave não foi aceita. Confira o provedor escolhido." });
+    if (response.status === 429) return res.status(429).json({ error: "O provedor atingiu um limite ou não tem créditos disponíveis." });
+    return res.status(502).json({ error: "Não foi possível gerar a voz. Revise a chave e tente novamente." });
+  }
+
+  if (provider === "openai") {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > 3 * 1024 * 1024) return res.status(502).json({ error: "A voz retornada está vazia ou é grande demais. Encurte o texto da cena." });
+    return res.status(200).json({ audio: bytes.toString("base64"), mimeType });
+  }
+  const result = await response.json().catch(() => ({}));
+  const audio = result.output_audio && result.output_audio.data;
+  if (typeof audio !== "string" || audio.length > 4 * 1024 * 1024) return res.status(502).json({ error: "O Gemini não retornou uma faixa de voz válida. Encurte o texto da cena." });
+  return res.status(200).json({ audio, mimeType });
 }
 
 
