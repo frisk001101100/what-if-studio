@@ -743,7 +743,7 @@
         imported.polls = Array.isArray(imported.polls) ? imported.polls.map((item) => ({ ...item, id: uid() })) : [];
         imported.continuity = Array.isArray(imported.continuity) ? imported.continuity.map((item) => ({ ...item, id: uid() })) : [];
         imported.sources = Array.isArray(imported.sources) ? imported.sources.map((item) => ({ ...item, id: uid() })) : [];
-        imported.history = [];
+        imported.history = Array.isArray(imported.history) ? imported.history.map((item) => ({ ...item, id: uid(), snapshot: item.snapshot && typeof item.snapshot === "object" ? { ...item.snapshot, id: imported.id, history: undefined } : null })) : [];
         state.projects.unshift(imported);
         state.activeProjectId = imported.id;
         activeView = "editor";
