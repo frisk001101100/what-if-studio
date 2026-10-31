@@ -99,7 +99,8 @@
       characters: [],
       episodes: [makeEpisode(1)],
       polls: [],
-      continuity: []
+      continuity: [],
+      sources: []
     };
     state.projects.unshift(project);
     state.activeProjectId = project.id;
@@ -169,7 +170,7 @@
   function renderEditor(project) {
     const tabs = [
       ["overview", "Visão geral"], ["episodes", "Episódios"], ["characters", "Personagens"],
-      ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["export", "Exportar"]
+      ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["sources", "Fontes"], ["export", "Exportar"]
     ];
     return '<div class="page-stack editor-stack"><div class="editor-topline"><button class="text-button" data-action="navigate" data-view="projects">← Projetos</button><span class="project-tag">' + escapeHtml(project.format) + '</span><span class="status-pill">' + escapeHtml(project.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-project">✦ Desenvolver com IA</button></div>' +
       '<div class="editor-heading"><div><h1>' + escapeHtml(project.title) + '</h1><p>' + escapeHtml(project.premise || "Uma história em construção.") + '</p></div><div class="editor-metrics"><span><b>' + project.episodes.length + '</b> episódios</span><span><b>' + project.characters.length + '</b> personagens</span><span><b>' + project.polls.length + '</b> enquetes</span></div></div>' +
@@ -183,6 +184,7 @@
     if (activeTab === "universe") return renderUniverse(project);
     if (activeTab === "polls") return renderPolls(project);
     if (activeTab === "continuity") return renderContinuity(project);
+    if (activeTab === "sources") return renderSources(project);
     if (activeTab === "export") return renderExport(project);
     return renderOverview(project);
   }
@@ -246,6 +248,17 @@
       (project.continuity.length ? '<div class="timeline">' + project.continuity.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map((entry) => '<article class="timeline-item"><span class="timeline-dot"></span><div class="timeline-entry"><div><span class="project-tag">' + escapeHtml(entry.type || "Nota") + '</span><span class="muted small">' + dateLabel(entry.createdAt) + '</span></div><p>' + escapeHtml(entry.text) + '</p></div><button class="icon-button danger-text" data-action="delete-continuity" data-id="' + escapeHtml(entry.id) + '">×</button></article>').join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">⌁</div><h3>Comece a registrar o que é verdade</h3><p>Quando um evento muda a história, registre a mudança para que os próximos episódios respeitem o que aconteceu.</p><button class="button button-primary" data-action="add-continuity">Adicionar primeiro registro</button></div>');
   }
 
+  function renderSources(project) {
+    const sources = project.sources || [];
+    return '<div class="section-heading"><div><span class="eyebrow">PESQUISA E VERIFICAÇÃO</span><h2>Fontes e referências</h2><p class="muted">Guarde links, fatos a conferir e o estado da checagem. Uma fonte registrada não é automaticamente validada.</p></div><button class="button button-primary" data-action="add-source">＋ Adicionar fonte</button></div>' +
+      (sources.length ? '<div class="source-grid">' + sources.map((source) => {
+        const safeUrl = /^https?:\/\//i.test(source.url || "") ? source.url : "";
+        return '<article class="source-card"><div class="source-card-head"><span class="project-tag">' + escapeHtml(source.status || "Para verificar") + '</span><button class="icon-button danger-text" data-action="delete-source" data-id="' + escapeHtml(source.id) + '">×</button></div><h3>' + escapeHtml(source.title || "Referência") + '</h3><p>' + escapeHtml(source.claim || "Sem afirmação associada.") + '</p>' +
+          (safeUrl ? '<a class="source-link" href="' + escapeHtml(safeUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(safeUrl) + ' ↗</a>' : '<span class="small muted">Nenhum link informado</span>') +
+          '<label class="field source-status"><span>Estado da checagem</span><select data-source-id="' + escapeHtml(source.id) + '" data-source-field="status"><option ' + (source.status === "Para verificar" ? "selected" : "") + '>Para verificar</option><option ' + (source.status === "Em análise" ? "selected" : "") + '>Em análise</option><option ' + (source.status === "Confirmada" ? "selected" : "") + '>Confirmada</option><option ' + (source.status === "Descartada" ? "selected" : "") + '>Descartada</option></select></label></article>';
+      }).join("") + '</div>' : '<div class="empty-state"><div class="empty-illustration">⌕</div><h3>Organize suas referências</h3><p>Registre uma fonte por afirmação importante. Para histórias documentais, diferencie fatos confirmados de hipóteses e ficção.</p><button class="button button-primary" data-action="add-source">Adicionar primeira fonte</button></div>');
+  }
+
   function renderExport(project) {
     return '<div class="two-column"><section class="panel"><span class="eyebrow">SEU MATERIAL, SEU FORMATO</span><h2>Exportar projeto</h2><p class="muted">Baixe uma cópia do projeto para guardar, revisar ou levar para outra ferramenta.</p><div class="export-options"><button class="export-option" data-action="export" data-format="json"><span class="export-icon">{ }</span><span><b>JSON completo</b><small>Todos os dados e a estrutura do projeto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="markdown"><span class="export-icon">M↓</span><span><b>Markdown</b><small>Documento legível com episódios, personagens e enquetes.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="txt"><span class="export-icon">TXT</span><span><b>Texto simples</b><small>Roteiros e informações em texto.</small></span><span>↓</span></button><button class="export-option" data-action="export" data-format="srt"><span class="export-icon">CC</span><span><b>Legendas SRT</b><small>Gera legendas a partir das falas e narrações das cenas.</small></span><span>↓</span></button></div></section><aside class="panel panel-soft"><span class="eyebrow">BACKUP</span><h3>Seus dados ficam com você.</h3><p>O salvamento local mantém o projeto neste navegador. Ative a sincronização nas configurações para guardar uma cópia na sua conta Supabase.</p><button class="button button-secondary button-wide" data-action="navigate" data-view="settings">Configurar sincronização →</button></aside></div>';
   }
@@ -285,6 +298,14 @@
 
   function showContinuityModal() {
     openModal('<div class="modal-top"><div><span class="eyebrow">MEMÓRIA DA HISTÓRIA</span><h2>Registrar continuidade</h2></div><button class="icon-button" data-action="close-modal">×</button></div><form data-form="add-continuity" class="form-grid"><label class="field"><span>Tipo de registro</span><select name="type"><option>Fato estabelecido</option><option>Decisão da audiência</option><option>Segredo</option><option>Consequência</option><option>Regra do universo</option><option>Detalhe visual</option></select></label><label class="field full"><span>O que precisa ser lembrado?</span><textarea name="text" required placeholder="Registre um fato que os próximos episódios devem respeitar."></textarea></label><div class="modal-actions"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar registro</button></div></form>');
+  }
+
+  function showSourceModal() {
+    openModal('<div class="modal-top"><div><span class="eyebrow">PESQUISA</span><h2>Adicionar referência</h2><p>Registre o link e a afirmação que ele ajuda a verificar.</p></div><button class="icon-button" data-action="close-modal">×</button></div><form data-form="add-source" class="form-grid">' +
+      '<label class="field full"><span>Título / instituição</span><input name="title" required maxlength="120" placeholder="Nome da publicação ou instituição"></label>' +
+      '<label class="field full"><span>URL da fonte (opcional)</span><input name="url" type="url" placeholder="https://..."></label>' +
+      '<label class="field full"><span>Afirmação ou informação relacionada</span><textarea name="claim" placeholder="O que esta fonte confirma ou precisa esclarecer?"></textarea></label>' +
+      '<div class="modal-actions"><button class="button button-ghost" type="button" data-action="close-modal">Cancelar</button><button class="button button-primary" type="submit">Salvar referência</button></div></form>');
   }
 
   async function generate(kind) {
@@ -474,6 +495,7 @@
       project.episodes.forEach((episode) => lines.push("## Episódio " + episode.number + " — " + episode.title, episode.summary, "", episode.script, ""));
       project.polls.forEach((poll) => lines.push("## Enquete", poll.question, ...(poll.options || []).map((option) => "- " + option.label + " (" + option.votes + " votos)"), "Consequência: " + poll.consequence, ""));
       project.continuity.forEach((entry) => lines.push("## Continuidade — " + entry.type, entry.text, ""));
+      (project.sources || []).forEach((source) => lines.push("## Fonte — " + source.title, source.claim, "URL: " + source.url, "Estado: " + source.status, ""));
       return downloadFile(filename + (format === "txt" ? ".txt" : ".md"), lines.join("\n"), "text/plain;charset=utf-8");
     }
     if (format === "srt") {
@@ -517,6 +539,7 @@
     if (action === "add-character") return showCharacterModal();
     if (action === "add-poll") return showPollModal();
     if (action === "add-continuity") return showContinuityModal();
+    if (action === "add-source") return showSourceModal();
     if (action === "generate-project") return generate("story-pack");
     if (action === "generate-episode") return generate("episode");
     if (action === "delete-character" && project) {
@@ -527,6 +550,9 @@
     }
     if (action === "delete-continuity" && project) {
       project.continuity = project.continuity.filter((item) => item.id !== button.dataset.id); save(); render(); return;
+    }
+    if (action === "delete-source" && project) {
+      project.sources = (project.sources || []).filter((item) => item.id !== button.dataset.id); save(); render(); return;
     }
     if (action === "delete-scene" && project) {
       const episode = project.episodes.find((item) => item.id === activeEpisodeId);
@@ -587,6 +613,10 @@
       const scene = episode && episode.scenes.find((item) => item.id === target.dataset.sceneId);
       if (scene) { scene[target.dataset.sceneField] = target.value; save(); }
     }
+    if (target.dataset.sourceField) {
+      const source = (project.sources || []).find((item) => item.id === target.dataset.sourceId);
+      if (source) { source[target.dataset.sourceField] = target.value; save(); }
+    }
   });
 
   document.addEventListener("change", (event) => {
@@ -605,6 +635,11 @@
       const episode = project && project.episodes.find((item) => item.id === activeEpisodeId);
       const scene = episode && episode.scenes.find((item) => item.id === target.dataset.sceneId);
       if (scene) { scene[target.dataset.sceneField] = target.type === "number" ? Number(target.value) : target.value; save(); }
+    }
+    if (target.dataset.sourceField) {
+      const project = currentProject();
+      const source = project && (project.sources || []).find((item) => item.id === target.dataset.sourceId);
+      if (source) { source[target.dataset.sourceField] = target.value; save(); }
     }
   });
 
@@ -631,6 +666,18 @@
     if (type === "add-continuity" && project) {
       project.continuity.push({ id: uid(), type: data.type, text: data.text, createdAt: new Date().toISOString() });
       save(); closeModal(); render(); notify("Registro salvo.", "success"); return;
+    }
+    if (type === "add-source" && project) {
+      const url = String(data.url || "").trim();
+      if (url) {
+        try {
+          const parsed = new URL(url);
+          if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("URL inválida");
+        } catch (_) { notify("Informe um link HTTP ou HTTPS válido.", "error"); return; }
+      }
+      project.sources = project.sources || [];
+      project.sources.push({ id: uid(), title: data.title, url: url, claim: data.claim || "", status: "Para verificar", createdAt: new Date().toISOString() });
+      save(); closeModal(); render(); notify("Referência adicionada.", "success"); return;
     }
     if (type === "settings") {
       const settings = getSettings();
