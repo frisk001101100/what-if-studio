@@ -18,6 +18,9 @@ A local-first studio for creating short-form interactive stories where audience 
 - Per-option poll consequences that are copied into continuity when the winning branch is selected.
 - Generate the next episode using the poll result and the established continuity as context.
 - Automatic local saving in the current browser.
+- A configurable Course What If sales page with a WhatsApp inquiry button; course payments are arranged and confirmed by the owner over WhatsApp/Pix.
+- A publishing workspace for episode scripts, captions, a local schedule queue capped at four planned posts per day, and copy-to-clipboard actions.
+- Paste one Instagram comment per line into a poll to count A/B or unambiguous option votes. The winning branch is added to story continuity so the next AI script can follow it. Original comments are not stored.
 - Optional Supabase magic-link login and cloud sync.
 - Optional AI generation with an OpenAI, Gemini or Claude API key entered in the app.
 
@@ -67,7 +70,7 @@ The client uses only the public anon/publishable key. Row Level Security ensures
 - Poll votes are entered manually. The app does not scrape social platforms or claim to read Instagram/TikTok poll results.
 - Cloud sync is optional and requires Supabase configuration.
 - AI generation is optional and requires an API key and billing with the selected provider, plus Supabase login for the daily quota.
-- There is no automatic publishing to social platforms yet.
+- The schedule queue is local planning only. There is no automatic Instagram login, video rendering, Reel publishing, insights polling, comment import, or threshold-triggered episode release yet. Instagram automation needs a Meta developer app, a Professional account, approved publishing/insights/comment permissions, secure token storage and a video file hosted for Meta to fetch. Meta's official Instagram API requires an app and user access token; its publishing flow uploads a Reel container from a publicly reachable video URL before publishing: [Meta Instagram API workspace](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api).
 - Local data is stored in the current browser until cloud sync is configured. Export backups regularly.
 
 ## Safety and privacy
