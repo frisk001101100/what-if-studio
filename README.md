@@ -6,11 +6,13 @@ A local-first studio for creating short-form interactive stories where audience 
 
 - Responsive dark workspace with dashboard and project library.
 - Create and edit story projects, premises, formats, platforms, tone and duration.
-- Episode list, script editor, scene breakdown and production notes.
+- Episode list, script editor, scene breakdown, image/video prompts, audio direction and production notes.
+- Publishing copy per episode: post caption, pinned comment and a Stories poll draft.
 - Character sheets with role, motivation, appearance and voice.
 - Universe setting, rules and visual direction.
 - Audience polls with multiple options, manual vote counting and narrative consequences.
 - Continuity log for established facts, audience decisions, secrets and consequences.
+- Source/reference tracker with verification status and link per claim.
 - Export project as JSON, Markdown, TXT or SRT.
 - Automatic local saving in the current browser.
 - Optional Supabase magic-link login and cloud sync.
