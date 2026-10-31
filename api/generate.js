@@ -4,11 +4,26 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Use POST para gerar conteúdo." });
   }
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: "A geração por IA ainda não está conectada. Adicione OPENAI_API_KEY nas Environment Variables do projeto Vercel." });
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+  if (!apiKey || !supabaseUrl || !supabaseAnonKey) {
+    return res.status(503).json({ error: "Configure OPENAI_API_KEY, SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente do Vercel." });
   }
   try {
+    const authorization = req.headers && (req.headers.authorization || req.headers.Authorization);
+    const tokenMatch = typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i) : null;
+    if (!tokenMatch) return res.status(401).json({ error: "Entre na sua conta Supabase para usar a geração por IA." });
+    const accessToken = tokenMatch[1].trim();
+
+    const authCheck = await fetch(supabaseUrl.replace(/\/$/, "") + "/auth/v1/user", {
+      headers: { "apikey": supabaseAnonKey, "Authorization": "Bearer " + accessToken }
+    });
+    if (!authCheck.ok) return res.status(401).json({ error: "Sessão Supabase inválida ou expirada. Entre novamente." });
+    const authenticatedUser = await authCheck.json().catch(() => null);
+    if (!authenticatedUser || !authenticatedUser.id) return res.status(401).json({ error: "Não foi possível validar sua sessão." });
+
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+    if (JSON.stringify(body).length > 100000) return res.status(413).json({ error: "O projeto é grande demais para uma única geração." });
     const kind = body.kind;
     const project = body.project || {};
     const episode = body.episode || null;
@@ -37,6 +52,25 @@ export default async function handler(req, res) {
     const userPayload = kind === "episode"
       ? { task: "Crie o roteiro detalhado de um episódio", project: compactProject, episode: safeEpisode }
       : { task: "Desenvolva um pacote de estrutura para a história", project: compactProject };
+    const quotaResponse = await fetch(supabaseUrl.replace(/\/$/, "") + "/rest/v1/rpc/consume_ai_quota", {
+      method: "POST",
+      headers: {
+        "apikey": supabaseAnonKey,
+        "Authorization": "Bearer " + accessToken,
+        "Content-Type": "application/json"
+      },
+      body: "{}"
+    });
+    if (!quotaResponse.ok) {
+      const quotaError = await quotaResponse.json().catch(() => ({}));
+      const quotaMessage = String(quotaError.message || quotaError.details || "");
+      if (/daily_generation_limit_reached/i.test(quotaMessage)) {
+        return res.status(429).json({ error: "Você atingiu o limite de 20 gerações por dia nesta conta. Tente novamente amanhã." });
+      }
+      console.error("Supabase quota check failed:", quotaResponse.status, quotaMessage);
+      return res.status(503).json({ error: "Não foi possível validar a cota de IA. Confirme se executou supabase/schema.sql e configurou as variáveis Supabase no Vercel." });
+    }
+
     const system = kind === "episode"
       ? [
           "Você é um roteirista e produtor de histórias curtas interativas.",
