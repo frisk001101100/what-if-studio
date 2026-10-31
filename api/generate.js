@@ -3,24 +3,7 @@ export default async function handler(req, res) {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Use POST para gerar conteúdo." });
   }
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return res.status(503).json({ error: "Configure SUPABASE_URL e SUPABASE_ANON_KEY nas variáveis de ambiente do Vercel." });
-  }
   try {
-    const authorization = req.headers && (req.headers.authorization || req.headers.Authorization);
-    const tokenMatch = typeof authorization === "string" ? authorization.match(/^Bearer\s+(.+)$/i) : null;
-    if (!tokenMatch) return res.status(401).json({ error: "Entre na sua conta Supabase para usar a geração por IA." });
-    const accessToken = tokenMatch[1].trim();
-
-    const authCheck = await fetch(supabaseUrl.replace(/\/$/, "") + "/auth/v1/user", {
-      headers: { "apikey": supabaseAnonKey, "Authorization": "Bearer " + accessToken }
-    });
-    if (!authCheck.ok) return res.status(401).json({ error: "Sessão Supabase inválida ou expirada. Entre novamente." });
-    const authenticatedUser = await authCheck.json().catch(() => null);
-    if (!authenticatedUser || !authenticatedUser.id) return res.status(401).json({ error: "Não foi possível validar sua sessão." });
-
     const body = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
     if (JSON.stringify(body).length > 100000) return res.status(413).json({ error: "O projeto é grande demais para uma única geração." });
     const kind = body.kind;
@@ -57,25 +40,6 @@ export default async function handler(req, res) {
     const userPayload = kind === "episode"
       ? { task: "Crie o roteiro detalhado de um episódio", project: compactProject, episode: safeEpisode }
       : { task: "Desenvolva um pacote de estrutura para a história", project: compactProject };
-    const quotaResponse = await fetch(supabaseUrl.replace(/\/$/, "") + "/rest/v1/rpc/consume_ai_quota", {
-      method: "POST",
-      headers: {
-        "apikey": supabaseAnonKey,
-        "Authorization": "Bearer " + accessToken,
-        "Content-Type": "application/json"
-      },
-      body: "{}"
-    });
-    if (!quotaResponse.ok) {
-      const quotaError = await quotaResponse.json().catch(() => ({}));
-      const quotaMessage = String(quotaError.message || quotaError.details || "");
-      if (/daily_generation_limit_reached/i.test(quotaMessage)) {
-        return res.status(429).json({ error: "Você atingiu o limite de 20 gerações por dia nesta conta. Tente novamente amanhã." });
-      }
-      console.error("Supabase quota check failed:", quotaResponse.status, quotaMessage);
-      return res.status(503).json({ error: "Não foi possível validar a cota de IA. Confirme se executou supabase/schema.sql e configurou as variáveis Supabase no Vercel." });
-    }
-
     const system = kind === "episode"
       ? [
           "Você é um roteirista e produtor de histórias curtas interativas.",
@@ -124,9 +88,9 @@ export default async function handler(req, res) {
     } else {
       endpoint = "https://api.anthropic.com/v1/messages";
       providerHeaders["x-api-key"] = apiKey;
-      providerHeaders["anthropic-version"] = "2026-10-21";
+      providerHeaders["anthropic-version"] = "2023-06-01";
       providerRequest = {
-        model: "claude-haiku-5-5",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 5500,
         system: system + " Gere JSON que corresponda exatamente aos campos solicitados.",
         messages: [{ role: "user", content: JSON.stringify(userPayload) }]
@@ -172,3 +136,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Erro interno ao gerar conteúdo. Tente novamente." });
   }
 }
+
+
+
