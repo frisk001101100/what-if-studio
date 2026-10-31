@@ -9,7 +9,7 @@ Workspace individual para criar séries curtas e histórias interativas em portu
 - Calendário editorial, pacote de publicação e área do Curso What If.
 - Exportação JSON, Markdown e texto; importação de backup JSON.
 - Salvamento automático neste navegador.
-- Renderização local de gráficos animados 9:16 em WebM.
+- Renderização local de gráficos animados 9:16 em WebM, com legendas derivadas da narração por cena, trilha/efeitos sintetizados e opção de misturar um arquivo de voz gravado pelo criador.
 - Geração opcional de roteiros com OpenAI, Gemini ou Claude. A chave informada fica na memória da aba e é enviada ao endpoint server-side para uma chamada. O provedor pode cobrar o uso da API.
 
 ## Executar e publicar
@@ -23,4 +23,6 @@ A geração de IA usa `/api/generate`. Não é necessário banco nem conta para 
 Este modo é individual em termos de uso, mas uma URL pública da Vercel continua acessível a qualquer pessoa que a encontre. Os dados ficam no navegador de quem os criou. A chave de IA não é salva no projeto, mas a solicitação envia ao provedor escolhido o conteúdo necessário para gerar o roteiro.
 
 O app não publica automaticamente no Instagram, não importa comentários/visualizações e não escolhe resultados de votação a partir de métricas. Enquetes e calendário são ferramentas de planejamento manual.
+
+O renderizador não gera voz narrada por IA. Se um arquivo de voz for selecionado, ele é misturado a partir do início do vídeo; sincronização palavra a palavra ainda requer edição externa. A trilha e os efeitos sintetizados são simples, sem músicas licenciadas.
 
