@@ -358,17 +358,28 @@
           duration: Number(scene.duration) || 8, sfx: scene.sfx || ""
         })) : episode.scenes;
       } else {
-        project.title = body.title || project.title;
-        project.premise = body.premise || body.logline || project.premise;
-        if (Array.isArray(body.universe)) project.world.rules = body.universe;
-        if (body.setting) project.world.setting = body.setting;
-        if (body.visualStyle) project.world.visualStyle = body.visualStyle;
+        if ((!project.title || project.title === "Nova história") && body.title) project.title = body.title;
+        if (!project.premise && (body.premise || body.logline)) project.premise = body.premise || body.logline;
+        if (body.setting && !project.world.setting) project.world.setting = body.setting;
+        if (body.visualStyle && !project.world.visualStyle) project.world.visualStyle = body.visualStyle;
+        if (Array.isArray(body.universe)) {
+          project.world.rules = Array.from(new Set([...(project.world.rules || []), ...body.universe.map(String)]));
+        }
         if (Array.isArray(body.characters) && body.characters.length) {
-          project.characters = body.characters.map((character) => ({ id: uid(), name: character.name || "Personagem", role: character.role || "Personagem", description: character.description || "", appearance: character.appearance || "", voice: character.voice || "" }));
+          const existingNames = new Set(project.characters.map((item) => String(item.name || "").toLowerCase()));
+          const generatedCharacters = body.characters
+            .filter((character) => !existingNames.has(String(character.name || "").toLowerCase()))
+            .map((character) => ({ id: uid(), name: character.name || "Personagem", role: character.role || "Personagem", description: character.description || "", appearance: character.appearance || "", voice: character.voice || "" }));
+          project.characters.push(...generatedCharacters);
         }
         if (Array.isArray(body.episodes) && body.episodes.length) {
-          project.episodes = body.episodes.map((item, index) => ({
-            id: uid(), number: index + 1, title: item.title || "Episódio " + (index + 1),
+          const hasOnlyBlankStarter = project.episodes.length === 1 &&
+            project.episodes[0].title === "Episódio 1" &&
+            !project.episodes[0].summary && !project.episodes[0].script &&
+            !(project.episodes[0].scenes || []).length;
+          const startNumber = hasOnlyBlankStarter ? 0 : project.episodes.length;
+          const generatedEpisodes = body.episodes.map((item, index) => ({
+            id: uid(), number: startNumber + index + 1, title: item.title || "Episódio " + (startNumber + index + 1),
             summary: item.summary || "", script: item.script || "", caption: item.caption || "", pinnedComment: item.pinnedComment || "", storyPoll: item.storyPoll || "",
             scenes: Array.isArray(item.scenes) ? item.scenes.map((scene) => ({
               id: uid(), title: scene.title || "Cena", visual: scene.visual || "",
@@ -376,13 +387,24 @@
               duration: Number(scene.duration) || 8, sfx: scene.sfx || ""
             })) : [], pollId: null, status: "Rascunho"
           }));
+          if (hasOnlyBlankStarter) project.episodes = generatedEpisodes;
+          else project.episodes.push(...generatedEpisodes);
         }
-        if (Array.isArray(body.polls)) project.polls = body.polls.map((poll) => ({
-          id: uid(), question: poll.question || "Escolha o próximo passo",
-          options: (poll.options || []).map((option) => ({ label: typeof option === "string" ? option : option.label || "Opção", votes: 0 })),
-          winner: "", consequence: poll.consequence || ""
-        }));
-        if (Array.isArray(body.continuity)) project.continuity = body.continuity.map((text) => ({ id: uid(), type: "Fato estabelecido", text: String(text), createdAt: new Date().toISOString() }));
+        if (Array.isArray(body.polls)) {
+          const generatedPolls = body.polls.map((poll) => ({
+            id: uid(), question: poll.question || "Escolha o próximo passo",
+            options: (poll.options || []).map((option) => ({ label: typeof option === "string" ? option : option.label || "Opção", votes: 0 })),
+            winner: "", consequence: poll.consequence || ""
+          }));
+          project.polls.push(...generatedPolls);
+        }
+        if (Array.isArray(body.continuity)) {
+          const existingFacts = new Set(project.continuity.map((entry) => String(entry.text || "").toLowerCase()));
+          project.continuity.push(...body.continuity
+            .map((text) => String(text))
+            .filter((text) => !existingFacts.has(text.toLowerCase()))
+            .map((text) => ({ id: uid(), type: "Fato estabelecido", text, createdAt: new Date().toISOString() })));
+        }
       }
       project.updatedAt = new Date().toISOString();
       save();
