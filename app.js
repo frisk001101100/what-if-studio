@@ -185,7 +185,7 @@
 
   function renderEditor(project) {
     const tabs = [
-      ["overview", "Visão geral"], ["episodes", "Episódios"], ["characters", "Personagens"],
+      ["overview", "Visão geral"], ["episodes", "Vídeos"], ["characters", "Personagens"],
       ["universe", "Universo"], ["polls", "Enquetes"], ["continuity", "Continuidade"], ["sources", "Fontes"], ["history", "Versões"], ["export", "Exportar"]
     ];
     return '<div class="page-stack editor-stack"><div class="editor-topline"><button class="text-button" data-action="navigate" data-view="projects">← Projetos</button><span class="project-tag">' + escapeHtml(project.format) + '</span><span class="status-pill">' + escapeHtml(project.status) + '</span><span class="spacer"></span><button class="button button-secondary button-small" data-action="generate-project">✦ Desenvolver com IA</button><button class="button button-danger-ghost button-small" data-action="delete-project">Excluir projeto</button></div>' +
@@ -231,7 +231,7 @@
       '<label class="field"><span>Ritmo narrativo</span><select data-bind="pacing">' + ["Dinâmico", "Lento e atmosférico", "Crescente", "Episódico", "Investigativo", "Com cortes rápidos"].map((item) => '<option ' + (project.pacing === item ? "selected" : "") + '>' + item + '</option>').join("") + '</select></label>' +
       '</div><div class="save-hint"><span class="live-dot"></span> Alterações salvas automaticamente neste dispositivo.</div></section>' +
       '<aside class="panel panel-accent"><span class="eyebrow">PRÓXIMOS PASSOS</span><h2>Construa com intenção.</h2><p>Uma boa história interativa tem regras claras, escolhas com consequências e continuidade entre episódios.</p><div class="check-row"><span class="' + (project.world.rules.length ? "check-done" : "") + '">✓</span><span>Definir as regras do universo</span></div><div class="check-row"><span class="' + (project.characters.length ? "check-done" : "") + '">✓</span><span>Criar personagens</span></div><div class="check-row"><span class="' + (project.episodes.some((episode) => episode.script) ? "check-done" : "") + '">✓</span><span>Escrever o primeiro roteiro</span></div><div class="check-row"><span class="' + (project.polls.length ? "check-done" : "") + '">✓</span><span>Preparar uma votação</span></div><button class="button button-primary button-wide" data-action="generate-project">✦ Desenvolver estrutura com IA</button></aside></div>' +
-      '<section class="panel"><div class="panel-heading"><div><span class="eyebrow">LINHA DO TEMPO</span><h2>Seus episódios</h2></div><button class="button button-secondary button-small" data-action="switch-tab" data-tab="episodes">Abrir episódios →</button></div>' +
+      '<section class="panel"><div class="panel-heading"><div><span class="eyebrow">LINHA DO TEMPO</span><h2>Seus vídeos</h2></div><button class="button button-secondary button-small" data-action="switch-tab" data-tab="episodes">Abrir episódios →</button></div>' +
       '<div class="episode-mini-list">' + project.episodes.slice(0, 4).map((episode) => '<button class="episode-mini" data-action="select-episode" data-id="' + escapeHtml(episode.id) + '"><span class="episode-number">' + String(episode.number).padStart(2, "0") + '</span><span class="episode-mini-copy"><b>' + escapeHtml(episode.title) + '</b><small>' + escapeHtml(episode.summary || "Sem resumo ainda") + '</small></span><span class="muted">→</span></button>').join("") + '</div></section>';
   }
 
